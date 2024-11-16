@@ -1,11 +1,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 
 // #define _CRTDBG_MAP_ALLOC //Memoryleak test etmek icindir. Memory Leak bulunmamaktadır.
 // #include <crtdbg.h>
 
 float getRadnomF();
+float activationF(float x);
+float derivActivationF(float x);
 typedef enum {
     INPUT_LAYER,
     HIDDEN_LAYER,
@@ -20,6 +23,22 @@ typedef struct N
     int m_myIndex;
 } Neuron;
 
+typedef struct L
+{
+    int neuronNum;
+    Neuron** neurons; // Pointer to array of neuron pointers
+    LayerType type;
+
+} Layer;
+
+typedef struct net
+{
+    int* topology;
+    int layerNum;
+    Layer** layers;
+}Net;
+
+//Neuron Codes
 Neuron* newNuron(int weightNum, int myIndex) {
     Neuron* neuron = (Neuron*)malloc(sizeof(Neuron));
 
@@ -44,14 +63,19 @@ void freeNuron(Neuron* neuron) {
     }
 }
 
-typedef struct L
-{
-    int neuronNum;
-    Neuron** neurons; // Pointer to array of neuron pointers
-    LayerType type;
+void feedForwardNeuron(Neuron* neuron,Layer* prevLayer){
+    int i;
+    float sum = 0;
+    for ( i = 0; i < prevLayer->neuronNum; i++)
+    {
+        sum += prevLayer->neurons[i]->weights[neuron->m_myIndex]*
+        prevLayer->neurons[i]->m_output_val;
+    }
+    neuron->m_output_val = activationF(sum);
+    
+}
 
-} Layer;
-
+//Layer Codes
 Layer* newLayer(int neuronNum, int nextNeuronNum, LayerType type) {
 
     Layer* layer = (Layer*)malloc(sizeof(Layer));
@@ -92,12 +116,17 @@ void freeLayer(Layer* layer) {
 
 }
 
-typedef struct net
-{
-    int* topology;
-    int layerNum;
-    Layer** layers;
-}Net;
+void feedForwardLayer(Layer* prevLayer, Layer* currLayer){
+    int i;
+
+    for ( i = 0; i < currLayer->neuronNum; i++)
+    {
+        feedForwardNeuron(currLayer->neurons[i],prevLayer);
+    }
+    
+}
+
+//Net Codes
 
 Net* newNet(int* topology, int layerNum) {
 
@@ -132,11 +161,42 @@ void freeNet(Net* net) {
     }
 }
 
+void feedForwardNet(Net* net,float * inputVals,int inputSize){
+    
+    int i,j,k;
 
-
-float getRadnomF() {
-    return (float)rand() / (float)RAND_MAX;
+    // Change when you add bias
+    if(net->topology[0] != inputSize){
+        printf("Couldnt Feed Forward !! \n Input Size DON'T match.\n");
+        return;
+    }
+    //Set first layers value with input
+    for (i = 0; i < net->topology[0]; i++)
+    {
+        net->layers[0]->neurons[i]->m_output_val = inputVals[i];
+    }
+    //Set first layers value with input
+    for (i = 1; i < net->layerNum; i++)
+    {
+        feedForwardLayer(net->layers[i-1],net->layers[i]);
+    }
+    
 }
+
+
+
+void printOutputNet(Net* net){
+    
+    int i,j,k;
+
+    int lastLayer = net->layerNum-1;
+    for (i = 0; i < net->layers[lastLayer]->neuronNum; i++)
+    {
+        printf("%d.Output :%f\n",i+1,net->layers[lastLayer]->neurons[i]->m_output_val);
+    }
+    
+}
+
 
 void saveNet(Net* net){
 
@@ -165,7 +225,6 @@ void saveNet(Net* net){
         }
         fprintf(fp,"\n");
     }
-
 }
 
 Net* readNet(){
@@ -225,6 +284,14 @@ void printNet(Net* net){
 
 }
 
+
+float getRadnomF() {
+    return (float)rand() / (float)RAND_MAX;
+}
+float activationF(float x){return tanhf(x);}
+float derivActivationF(float x){return 1 - x * x;}
+
+
 int main() {
 
     //Random comment out below ,if u want random seed
@@ -262,9 +329,32 @@ int main() {
         
     }
 
+    float data[][2] = {
+        {0,0},
+        {1,0},
+        {0,1},
+        {1,1}            
+    };
+    float targetVal[][1] = {
+        {0},
+        {1},
+        {1},
+        {0}            
+    };
 
+    printf("Feed Forward\n");
 
-    freeNet(myNet);
+    int i,j,k;
+
+    for (i = 0; i < 4; i++)
+    {
+        int inputSize = sizeof(data[i]) / sizeof(data[i][0]); 
+        feedForwardNet(myNet,&data[i],inputSize);
+        printOutputNet(myNet);
+        printf("---------------\n");
+    }
+    
+
 
 
 
@@ -283,6 +373,7 @@ int main() {
     // }
 
 
+    freeNet(myNet);
     // _CrtDumpMemoryLeaks();
     return 0;
 }
