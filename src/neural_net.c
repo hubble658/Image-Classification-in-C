@@ -20,12 +20,18 @@ typedef struct N
 
 Neuron* newNuron(int weightNum, int myIndex){
     Neuron* neuron = (Neuron*)malloc(sizeof(Neuron));
+
+    neuron->m_output_val = 0.0f; // default value
     neuron->m_myIndex = myIndex;
     neuron->weightNum = weightNum;
-    neuron->weights = (float*)malloc(sizeof(float)*weightNum);
-    for (int i = 0; i < weightNum; i++)
-    {
-        neuron->weights[i] = getRadnomF();
+    neuron->weights = NULL; // null for output layer
+    
+    if(weightNum!=0){
+        neuron->weights = (float*)malloc(sizeof(float)*weightNum);
+        for (int i = 0; i < weightNum; i++)
+        {
+            neuron->weights[i] = getRadnomF();
+        }
     }
     return neuron;
 }
@@ -49,10 +55,24 @@ Layer* newLayer(int neuronNum,int nextNeuronNum, LayerType type){
     Layer* layer = (Layer*) malloc(sizeof(Layer));
     layer->neurons = (Neuron**) malloc(sizeof(Neuron*)*neuronNum);
     layer->type = type;
+    layer->neuronNum = neuronNum;
 
-    for (int i = 0; i < neuronNum; i++)
-    {
-        layer->neurons[i] = newNuron(nextNeuronNum,i);
+    int i;
+    if(neuronNum>0){
+        for (i = 0; i < neuronNum; i++)
+        {
+            layer->neurons[i] = newNuron(nextNeuronNum,i);
+            if (!layer->neurons[i]) {
+                printf("Memory allocation failed for Neuron %d\n", i);
+                // Free previously allocated neurons and the layer
+                for (int j = 0; j < i; j++) {
+                    freeNuron(layer->neurons[j]);
+                }
+                free(layer->neurons);
+                free(layer);
+                return NULL;
+            }
+        }
     }
 }
 
@@ -71,12 +91,41 @@ void freeLayer(Layer* layer){
 
 typedef struct net
 {
+    int* topology;
+    int layerNum;
     Layer** layers;
 }Net;
 
-Net* newNet(int){
+Net* newNet(int* topology, int layerNum){
     
-    
+    Net* net = (Net*) malloc(sizeof(Net));
+    net->topology = topology;
+    net->layerNum = layerNum;
+    net->layers = (Layer**)malloc(sizeof(Layer*)*layerNum);
+
+    //First input layer
+    net->layers[0] = newLayer(topology[0], topology[1], INPUT_LAYER);
+    //Hidden layers
+    for (int i = 1; i < layerNum-1; i++)
+    {
+        net->layers[i] = newLayer(topology[i], topology[i+1], HIDDEN_LAYER);
+    }
+    //Output layer
+    net->layers[layerNum-1] = newLayer(topology[layerNum-1], 0, OUTPUT_LAYER);
+
+    return net;
+}
+
+void freeNet(Net* net){
+
+    if(net){
+        for (int i = 0; i < net->layerNum; i++)
+        {
+            freeLayer(net->layers[i]);
+        }
+        free(net->layers);
+        free(net);
+    }
 }
 
 
@@ -102,18 +151,18 @@ int main(){
         scanf(" %d",&topology[i]);
         // printf(" ");
     }
-    printf("\n");
+    
 
-    for (int i = 0; i < layerNum; i++)
+    Net* myNet = newNet(topology,layerNum);
+
+    for (int i = 0; i < myNet->layerNum; i++)
     {
-        printf("%d ",topology[i]);
+        for (int j = 0; j < myNet->layers[i]->neuronNum; j++)
+        {
+            printf("%f ",myNet->layers[i]->neurons[j]->m_output_val);
+        }
+        printf("\n");
     }
-    
-
-    // Net* myNet = newNet();
-
-
-    
     
 
 
