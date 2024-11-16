@@ -40,6 +40,7 @@ typedef struct net
 
 //Neuron Codes
 Neuron* newNuron(int weightNum, int myIndex) {
+    int i;
     Neuron* neuron = (Neuron*)malloc(sizeof(Neuron));
 
     neuron->m_output_val = 0.0f; // default value
@@ -49,7 +50,7 @@ Neuron* newNuron(int weightNum, int myIndex) {
 
     if (weightNum != 0) {
         neuron->weights = (float*)malloc(sizeof(float) * weightNum);
-        for (int i = 0; i < weightNum; i++)
+        for (i = 0; i < weightNum; i++)
         {
             neuron->weights[i] = getRadnomF();
         }
@@ -118,7 +119,6 @@ void freeLayer(Layer* layer) {
 
 void feedForwardLayer(Layer* prevLayer, Layer* currLayer){
     int i;
-
     for ( i = 0; i < currLayer->neuronNum; i++)
     {
         feedForwardNeuron(currLayer->neurons[i],prevLayer);
@@ -130,6 +130,7 @@ void feedForwardLayer(Layer* prevLayer, Layer* currLayer){
 
 Net* newNet(int* topology, int layerNum) {
 
+    int i;
     Net* net = (Net*)malloc(sizeof(Net));
     net->topology = topology;
     net->layerNum = layerNum;
@@ -138,7 +139,7 @@ Net* newNet(int* topology, int layerNum) {
     //First input layer
     net->layers[0] = newLayer(topology[0], topology[1], INPUT_LAYER);
     //Hidden layers
-    for (int i = 1; i < layerNum - 1; i++)
+    for ( i= 1; i < layerNum - 1; i++)
     {
         net->layers[i] = newLayer(topology[i], topology[i + 1], HIDDEN_LAYER);
     }
@@ -149,9 +150,9 @@ Net* newNet(int* topology, int layerNum) {
 }
 
 void freeNet(Net* net) {
-
+    int i;
     if (net) {
-        for (int i = 0; i < net->layerNum; i++)
+        for (i = 0; i < net->layerNum; i++)
         {
             freeLayer(net->layers[i]);
         }
@@ -163,7 +164,7 @@ void freeNet(Net* net) {
 
 void feedForwardNet(Net* net,float * inputVals,int inputSize){
     
-    int i,j,k;
+    int i;
 
     // Change when you add bias
     if(net->topology[0] != inputSize){
@@ -183,8 +184,29 @@ void feedForwardNet(Net* net,float * inputVals,int inputSize){
     
 }
 
+float* getResultsNet(Net* net){
+    
+    int i,j,k;
+    int lastLayer = net->layerNum-1;
+    int outputNum = net->layers[lastLayer]->neuronNum;
 
+    float* results = (float*) malloc(sizeof(float)*outputNum);
 
+    for (i = 0; i < net->layers[lastLayer]->neuronNum; i++)
+    {
+        results[i]=net->layers[lastLayer]->neurons[i]->m_output_val;
+    }
+    return results;
+}
+
+void backPropagation(Net*net,float*targetVals){
+    int i,j;
+
+   //TODO
+   
+    
+
+}
 void printOutputNet(Net* net){
     
     int i,j,k;
