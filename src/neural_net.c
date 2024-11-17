@@ -6,6 +6,7 @@
 // #define _CRTDBG_MAP_ALLOC //Memoryleak test etmek icindir. Memory Leak bulunmamaktadır.
 // #include <crtdbg.h>
 
+
 float getRadnomF();
 float activationF(float x);
 float derivActivationF(float x);
@@ -18,8 +19,10 @@ typedef enum {
 typedef struct N
 {
     float* weights; // Neurons Connections
-    int weightNum;
     float m_output_val; // Calculated Value that will be multiplied with weights
+    float m_gradient;
+
+    int weightNum;
     int m_myIndex;
 } Neuron;
 
@@ -35,6 +38,10 @@ typedef struct net
 {
     int* topology;
     int layerNum;
+
+    float m_error;
+    float m_recentAverageError;
+    float m_errorSmoothingFactor;
     Layer** layers;
 }Net;
 
@@ -44,6 +51,7 @@ Neuron* newNuron(int weightNum, int myIndex) {
     Neuron* neuron = (Neuron*)malloc(sizeof(Neuron));
 
     neuron->m_output_val = 0.0f; // default value
+    neuron->m_gradient = 0.0f; // default value
     neuron->m_myIndex = myIndex;
     neuron->weightNum = weightNum;
     neuron->weights = NULL; // null for output layer
@@ -135,6 +143,9 @@ Net* newNet(int* topology, int layerNum) {
     net->topology = topology;
     net->layerNum = layerNum;
     net->layers = (Layer**)malloc(sizeof(Layer*) * layerNum);
+    net->m_errorSmoothingFactor = 100.0f;
+    net->m_recentAverageError = 0;
+    net->m_error = 0;
 
     //First input layer
     net->layers[0] = newLayer(topology[0], topology[1], INPUT_LAYER);
@@ -199,11 +210,82 @@ float* getResultsNet(Net* net){
     return results;
 }
 
-void backPropagation(Net*net,float*targetVals){
+float sumDOW(Layer* nextLayer , Neuron* neuron){ // sum of Derivate Of Weigths
+    int i;
+    float sum = 0.0f;
+    for (i = 0; i < nextLayer->neuronNum; i++) // update this when added BIAS
+    {
+        sum += neuron->weights[i] * nextLayer->neurons[i]->m_gradient;
+    }
+    return sum;
+    
+}
+
+void calculateHiddenGrad(Layer* nextLayer, Neuron* neuron){
+    //Gradient Descent
+    float dow = sumDOW(nextLayer,neuron);
+    neuron->m_gradient = dow * derivActivationF(neuron->m_output_val);
+}
+void calculateOutputGrad(float* targetVals, Layer* outputLayer){
+    int i;
+    float delta;
+    for (i = 0; i < outputLayer->neuronNum; i++){
+        //Gradient Descent
+        delta = targetVals[i] - outputLayer->neurons[i]->m_output_val;
+        outputLayer->neurons[i]->m_gradient = delta * derivActivationF(outputLayer->neurons[i]->m_output_val);
+    }
+}
+
+void backPropagation(Net*net, float*targetVals, int targetSize){
     int i,j;
 
-   //TODO
+    //TODO
+    Layer* outputLayer = net->layers[net->layerNum-1];
+
+    if(outputLayer->neuronNum != targetSize){
+        printf("\n!!! OUTPUT SIZE DONT MATCH !!!\nCouldnt use backpropagation");
+    }
+
+
+    float m_error = 0.0f;
+    float delta;
+    for (i = 0; i < outputLayer->neuronNum; i++)
+    {
+        delta = targetVals[i] - outputLayer->neurons[i]->m_output_val;
+        m_error += delta * delta;
+    }
    
+    m_error = m_error/outputLayer->neuronNum;
+    m_error = sqrtf(m_error); //RMS
+    net->m_error = m_error;
+
+    net->m_recentAverageError = (net->m_recentAverageError * net->m_errorSmoothingFactor + net->m_error)
+        / (net->m_errorSmoothingFactor + 1.0);
+
+    //Calculate gradient for output
+    calculateOutputGrad(targetVals,outputLayer);
+
+    //Calculate gradient for hidden
+
+    int layerNum;
+    int n;
+    for (layerNum = net->layerNum - 2; layerNum > 0; --layerNum) {
+        Layer* hiddenLayer = net->layers[layerNum];
+        Layer* nextLayer = net->layers[layerNum + 1];
+
+        for (n = 0; n < hiddenLayer->neuronNum; ++n) { // Bias EKLENDIGINDA UNUTMA
+            calculateHiddenGrad(nextLayer,hiddenLayer->neurons[i]);
+        }
+    }
+    
+    //Update Weights
+
+    //ADD BIAS
+
+    for (layerNum = 0; layerNum < net->layerNum; layerNum++)
+    {
+        /* code */
+    }
     
 
 }
@@ -308,11 +390,20 @@ void printNet(Net* net){
 
 
 float getRadnomF() {
-    return (float)rand() / (float)RAND_MAX;
+    //Add Normal Distrubiton to randoms
+    return (float)rand() / (float)RAND_MAX -0.5f;
 }
 float activationF(float x){return tanhf(x);}
 float derivActivationF(float x){return 1 - x * x;}
 
+//TO DO
+//add bias
+//add normal distrubito to random
+//add backprogpagation 
+//test sumDOW
+//add extra attributes to struct (needed for Adam)
+//add gd
+//add sgd
 
 int main() {
 
@@ -371,28 +462,10 @@ int main() {
     for (i = 0; i < 4; i++)
     {
         int inputSize = sizeof(data[i]) / sizeof(data[i][0]); 
-        feedForwardNet(myNet,&data[i],inputSize);
+        feedForwardNet(myNet,data[i],inputSize);
         printOutputNet(myNet);
         printf("---------------\n");
     }
-    
-
-
-
-
-    // for (int i = 0; i < outLayer.neuronNum; i++)
-    // {
-    //     Neuron* currNeuron = &outLayer.neurons[i];
-    //     Layer* previousLayer = &inLayer;
-
-    //     float sum = 0.0f;
-    //     for (int i = 0; i < previousLayer->neuronNum; i++)
-    //     {
-    //         sum += previousLayer->neurons[i].weights[currNeuron->m_myIndex] * previousLayer->neurons[i].m_output_val;
-    //     }
-    //     currNeuron->m_output_val = sum;
-    //     printf("sum : %f\n",sum);
-    // }
 
 
     freeNet(myNet);
