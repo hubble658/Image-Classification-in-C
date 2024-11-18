@@ -87,10 +87,8 @@ void feedForwardNeuron(Neuron* neuron,Layer* prevLayer){
 //Layer Codes
 Layer* newLayer(int neuronNum, int nextNeuronNum, LayerType type) {
 
-    
     neuronNum = neuronNum+1; // neuronNum+1 because we add bias as a neuron execpt last layer.
     
-
     Layer* layer = (Layer*)malloc(sizeof(Layer));
     layer->neurons = (Neuron**)malloc(sizeof(Neuron*) * neuronNum);
     layer->type = type;
@@ -113,8 +111,8 @@ Layer* newLayer(int neuronNum, int nextNeuronNum, LayerType type) {
             }
         }
     }
+
     //Set 1 to bias value. It will be ajdusted via weight
-    
     layer->neurons[neuronNum-1]->m_output_val = 1.0f;
     
     return layer;
