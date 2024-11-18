@@ -87,6 +87,10 @@ void feedForwardNeuron(Neuron* neuron,Layer* prevLayer){
 //Layer Codes
 Layer* newLayer(int neuronNum, int nextNeuronNum, LayerType type) {
 
+    
+    neuronNum = neuronNum+1; // neuronNum+1 because we add bias as a neuron execpt last layer.
+    
+
     Layer* layer = (Layer*)malloc(sizeof(Layer));
     layer->neurons = (Neuron**)malloc(sizeof(Neuron*) * neuronNum);
     layer->type = type;
@@ -109,6 +113,10 @@ Layer* newLayer(int neuronNum, int nextNeuronNum, LayerType type) {
             }
         }
     }
+    //Set 1 to bias value. It will be ajdusted via weight
+    
+    layer->neurons[neuronNum-1]->m_output_val = 1.0f;
+    
     return layer;
 }
 
@@ -127,7 +135,7 @@ void freeLayer(Layer* layer) {
 
 void feedForwardLayer(Layer* prevLayer, Layer* currLayer){
     int i;
-    for ( i = 0; i < currLayer->neuronNum; i++)
+    for ( i = 0; i < currLayer->neuronNum-1; i++)
     {
         feedForwardNeuron(currLayer->neurons[i],prevLayer);
     }
@@ -213,7 +221,7 @@ float* getResultsNet(Net* net){
 float sumDOW(Layer* nextLayer , Neuron* neuron){ // sum of Derivate Of Weigths
     int i;
     float sum = 0.0f;
-    for (i = 0; i < nextLayer->neuronNum; i++) // update this when added BIAS
+    for (i = 0; i < nextLayer->neuronNum-1; i++) // update this when added BIAS
     {
         sum += neuron->weights[i] * nextLayer->neurons[i]->m_gradient;
     }
@@ -242,7 +250,8 @@ void backPropagation(Net*net, float*targetVals, int targetSize){
     //TODO
     Layer* outputLayer = net->layers[net->layerNum-1];
 
-    if(outputLayer->neuronNum != targetSize){
+    //dont count bias at last layer
+    if(outputLayer->neuronNum-1 != targetSize){ 
         printf("\n!!! OUTPUT SIZE DONT MATCH !!!\nCouldnt use backpropagation");
     }
 
@@ -280,7 +289,6 @@ void backPropagation(Net*net, float*targetVals, int targetSize){
     
     //Update Weights
 
-    //ADD BIAS
 
     for (layerNum = 0; layerNum < net->layerNum; layerNum++)
     {
@@ -294,7 +302,7 @@ void printOutputNet(Net* net){
     int i,j,k;
 
     int lastLayer = net->layerNum-1;
-    for (i = 0; i < net->layers[lastLayer]->neuronNum; i++)
+    for (i = 0; i < net->layers[lastLayer]->neuronNum-1; i++)
     {
         printf("%d.Output :%f\n",i+1,net->layers[lastLayer]->neurons[i]->m_output_val);
     }
@@ -403,12 +411,12 @@ float derivActivationF(float x){return 1 - x * x;}
 //test sumDOW
 //add extra attributes to struct (needed for Adam)
 //add gd
-//add sgd
+//add sgd 
 
 int main() {
 
     //Random comment out below ,if u want random seed
-    srand(time(NULL)); 
+    // srand(time(NULL)); 
 
     printf("New net: 1 , Read Net : 2\nOption:");
 
