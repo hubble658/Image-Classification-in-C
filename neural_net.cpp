@@ -156,7 +156,8 @@ void Net::backProp(const vector<double>& targetVals)
     Layer& outputLayer = m_layers.back();
     m_error = 0.0;
 
-    for (unsigned n = 0; n < outputLayer.size() - 1; ++n) {
+    //error hesaplaması düzelt
+    for (unsigned n = 0; n < outputLayer.size() - 1; ++n) { 
         double delta = targetVals[n] - outputLayer[n].getOutputVal();
         m_error += delta * delta;
     }
@@ -238,20 +239,6 @@ int main() {
 
    srand(static_cast<unsigned int>(time(0)));
 
-//    fstream myFile;
-//    myFile.open("weights.txt", ios::in);
-
-//    if (myFile.is_open()) {
-
-//        string line;
-//        while (getline(myFile, line))
-//        {
-//            if (line == "1 10 10 10 1") {
-//                cout << "yes";
-//            }
-//        }
-
-//    }
 
    vector<unsigned> topology = { 1, 10 ,10 ,1 }; // 1 10 10 10 1
    Net myNet(topology);
