@@ -1,3 +1,4 @@
 
 src/neural_net.exe
 src/weights.txt
+data/train_scaled.txt

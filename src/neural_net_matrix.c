@@ -6,10 +6,13 @@
 // #define _CRTDBG_MAP_ALLOC //Memoryleak test etmek icindir. Memory Leak bulunmamaktadır.
 // #include <crtdbg.h>
 #define PI 3.14159265358979323846
+#define EPS 0.000001
 
-float getRandomF();
-float activationF(float x);
-float derivActivationF(float x);
+const double clip_threshold = 10.0;
+
+double getRandom();
+double activation(double x);
+double derivActivation(double x);
 typedef enum {
     INPUT_LAYER,
     HIDDEN_LAYER,
@@ -17,17 +20,17 @@ typedef enum {
 } LayerType;
 
 typedef struct D {
-    float** inputVals;
-    float** targetVals;
+    double** inputVals;
+    double** targetVals;
     int rowNumber;
     int colNumber;
     int numOfClasses;
 }Data;
 typedef struct N
 {
-    float* weights; // Neurons Connections
-    float m_output_val; // Calculated Value that will be multiplied with weights
-    float m_gradient;
+    double* weights; // Neurons Connections
+    double m_output_val; // Calculated Value that will be multiplied with weights
+    double m_gradient;
 
     int weightNum;
     int m_myIndex;
@@ -46,91 +49,142 @@ typedef struct net
     int* topology;
     int layerNum;
 
-    float m_error;
-    float m_recentAverageError;
-    float m_errorSmoothingFactor;
+    double m_error;
+    double m_recentAverageError;
+    double m_errorSmoothingFactor;
     Layer** layers;
 }Net;
 
 //Neuron Codes
-Neuron* newNuron(int weightNum, int myIndex) {
+Neuron* newNeuron(int weightNum, int myIndex) {
     int i;
-    Neuron* neuron = (Neuron*)malloc(sizeof(Neuron));
 
-    neuron->m_output_val = 0.0f; // default value
-    neuron->m_gradient = 0.0f; // default value
+    // Allocate memory for the Neuron
+    Neuron* neuron = (Neuron*)malloc(sizeof(Neuron));
+    if (!neuron) {
+        fprintf(stderr, "Memory allocation failed for Neuron.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Initialize default values
+    neuron->m_output_val = 0.0f;
+    neuron->m_gradient = 0.0f;
     neuron->m_myIndex = myIndex;
     neuron->weightNum = weightNum;
-    neuron->weights = NULL; // null for output layer
+    neuron->weights = NULL; // Set to NULL for output layer
 
+    // Allocate memory for weights if necessary
     if (weightNum != 0) {
-        neuron->weights = (float*)malloc(sizeof(float) * weightNum);
-        for (i = 0; i < weightNum; i++)
-        {
-            neuron->weights[i] = getRandomF();
+        neuron->weights = (double*)malloc(sizeof(double) * weightNum);
+        if (!neuron->weights) {
+            fprintf(stderr, "Memory allocation failed for Neuron weights.\n");
+            free(neuron); // Clean up previously allocated memory
+            exit(EXIT_FAILURE);
+        }
+
+        // Initialize weights with random values
+        for (i = 0; i < weightNum; i++) {
+            neuron->weights[i] = getRandom();
         }
     }
+
     return neuron;
 }
-void freeNuron(Neuron* neuron) {
+
+void freeNeuron(Neuron* neuron) {
     if (neuron) {
         free(neuron->weights);
         free(neuron);
     }
 }
 
+int a = 0;
 void feedForwardNeuron(Neuron* neuron, Layer* prevLayer) {
     int i;
-    float sum = 0;
+    double sum = 0;
     for (i = 0; i < prevLayer->neuronNum; i++)
     {
         sum += prevLayer->neurons[i]->weights[neuron->m_myIndex] *
             prevLayer->neurons[i]->m_output_val;
+
+        if(isnan(sum)){
+            printf("feedForward nan index: %d , %d : \n",neuron->m_myIndex, i);
+            printf("feedForward sum %lf\n",sum);
+            printf("feedForward weight %lf , neuron indexi: %d\n",prevLayer->neurons[i]->weights[neuron->m_myIndex],neuron->m_myIndex);
+            printf("feedForward output_val %lf\n",prevLayer->neurons[i]->m_output_val);
+
+            exit(0);
+        }
+        // if(neuron->m_myIndex>53){
+
+        //     printf("feedForward sum %lf\n",sum);
+        //     printf("feedForward weight %lf , neuron indexi: %d\n",prevLayer->neurons[i]->weights[neuron->m_myIndex],neuron->m_myIndex);
+        //     printf("feedForward output_val %lf\n",prevLayer->neurons[i]->m_output_val);
+        // }
+        // Clip gradient if too large
+        if (sum > clip_threshold){ 
+            // printf("%lf\n",sum);
+            sum = clip_threshold;
+            }
+        if (sum < -clip_threshold) sum = -clip_threshold;
     }
-    neuron->m_output_val = activationF(sum);
+    a++;
+    // printf("%d %lf\n",a,sum);
+    neuron->m_output_val = activation(sum);
 
 }
 
 //Layer Codes
-Layer* newLayer(int neuronNum, int nextNeuronNum, LayerType type) {
+Layer* newLayer(int neuronNum1, int nextNeuronNum, LayerType type) {
+    int neuronNum = neuronNum1+1; // Add bias neuron (except for the last layer)
 
-    neuronNum = neuronNum + 1; // neuronNum+1 because we add bias as a neuron execpt last layer.
-
+    // Allocate memory for the layer
     Layer* layer = (Layer*)malloc(sizeof(Layer));
-    layer->neurons = (Neuron**)malloc(sizeof(Neuron*) * neuronNum);
+    if (!layer) {
+        fprintf(stderr, "Memory allocation failed for Layer.\n");
+        exit(EXIT_FAILURE);
+    }
+
     layer->type = type;
     layer->neuronNum = neuronNum;
+    // Allocate memory for the neurons array
+    layer->neurons = (Neuron**)malloc(sizeof(Neuron*) * neuronNum);
+    if (!layer->neurons) {
+        fprintf(stderr, "Memory allocation failed for Layer neurons array.\n");
+        free(layer);
+        exit(EXIT_FAILURE);
+    }
 
+
+    // Allocate memory for each neuron
     int i;
-    if (neuronNum > 0) {
-        for (i = 0; i < neuronNum; i++)
-        {
-            layer->neurons[i] = newNuron(nextNeuronNum, i);
-            if (!layer->neurons[i]) {
-                printf("Memory allocation failed for Neuron %d\n", i);
-                // Free previously allocated neurons and the layer
-                for (int j = 0; j < i; j++) {
-                    freeNuron(layer->neurons[j]);
-                }
-                free(layer->neurons);
-                free(layer);
-                return NULL;
+    for (i = 0; i < neuronNum; i++) {
+        layer->neurons[i] = newNeuron(nextNeuronNum, i);
+        if (!layer->neurons[i]) {
+            fprintf(stderr, "Memory allocation failed for Neuron %d.\n", i);
+            // Free previously allocated neurons and layer
+            for (int j = 0; j < i; j++) {
+                freeNeuron(layer->neurons[j]);
             }
+            free(layer->neurons);
+            free(layer);
+            exit(EXIT_FAILURE);
         }
     }
 
-    //Set 1 to bias value. It will be ajdusted via weight
+    // Set bias neuron's output value to 1.0
     layer->neurons[neuronNum - 1]->m_output_val = 1.0f;
 
     return layer;
 }
+
 
 void freeLayer(Layer* layer) {
 
     if (layer) {
         for (int i = 0; i < layer->neuronNum; i++)
         {
-            freeNuron(layer->neurons[i]);
+            freeNeuron(layer->neurons[i]);
         }
         free(layer->neurons);
         free(layer);
@@ -150,28 +204,51 @@ void feedForwardLayer(Layer* prevLayer, Layer* currLayer) {
 //Net Codes
 
 Net* newNet(int* topology, int layerNum) {
-
     int i;
+
+    // Allocate memory for the Net structure
     Net* net = (Net*)malloc(sizeof(Net));
+    if (!net) {
+        fprintf(stderr, "Memory allocation failed for Net.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Initialize fields
     net->topology = topology;
     net->layerNum = layerNum;
-    net->layers = (Layer**)malloc(sizeof(Layer*) * layerNum);
     net->m_errorSmoothingFactor = 100.0f;
     net->m_recentAverageError = 0;
     net->m_error = 0;
 
-    //First input layer
-    net->layers[0] = newLayer(topology[0], topology[1], INPUT_LAYER);
-    //Hidden layers
-    for (i = 1; i < layerNum - 1; i++)
-    {
-        net->layers[i] = newLayer(topology[i], topology[i + 1], HIDDEN_LAYER);
+    // Allocate memory for the layers array
+    net->layers = (Layer**)malloc(sizeof(Layer*) * layerNum);
+    if (!net->layers) {
+        fprintf(stderr, "Memory allocation failed for Net layers array.\n");
+        free(net);
+        exit(EXIT_FAILURE);
     }
-    //Output layer
-    net->layers[layerNum - 1] = newLayer(topology[layerNum - 1], 0, OUTPUT_LAYER);
+
+    // Allocate and initialize layers
+    for (i = 0; i < layerNum; i++) {
+        LayerType type = (i == 0) ? INPUT_LAYER : (i == layerNum - 1) ? OUTPUT_LAYER : HIDDEN_LAYER;
+        int nextNeuronNum = (i < layerNum - 1) ? topology[i + 1] : 0;
+
+        net->layers[i] = newLayer(topology[i], nextNeuronNum, type);
+        if (!net->layers[i]) {
+            fprintf(stderr, "Memory allocation failed for Layer %d.\n", i);
+            // Free previously allocated layers and the Net structure
+            for (int j = 0; j < i; j++) {
+                freeLayer(net->layers[j]); // Assuming freeLayer properly cleans up a Layer
+            }
+            free(net->layers);
+            free(net);
+            exit(EXIT_FAILURE);
+        }
+    }
 
     return net;
 }
+
 
 void freeNet(Net* net) {
     int i;
@@ -186,13 +263,14 @@ void freeNet(Net* net) {
     }
 }
 
-void feedForwardNet(Net* net, float* inputVals, int inputSize) {
+void feedForwardNet(Net* net, double* inputVals, int inputSize) {
 
     int i;
 
     // Change when you add bias
     if (net->topology[0] != inputSize) {
         printf("Couldnt Feed Forward !! \n Input Size DON'T match.\n");
+        exit(0);
         return;
     }
     //Set first layers value with input
@@ -208,21 +286,6 @@ void feedForwardNet(Net* net, float* inputVals, int inputSize) {
 
 }
 
-float* getResultsNet(Net* net) {// no usage
-
-    int i, j, k;
-    int lastLayer = net->layerNum - 1;
-    int outputNum = net->layers[lastLayer]->neuronNum;
-
-    float* results = (float*)malloc(sizeof(float) * outputNum);
-
-    for (i = 0; i < net->layers[lastLayer]->neuronNum; i++)
-    {
-        results[i] = net->layers[lastLayer]->neurons[i]->m_output_val;
-    }
-    return results;
-}
-
 void updateWeightsNeuron(Neuron* neuron, Layer* prevLayer) {
 
     //Kontrol et sonra
@@ -230,69 +293,98 @@ void updateWeightsNeuron(Neuron* neuron, Layer* prevLayer) {
     for (i = 0; i < prevLayer->neuronNum; i++)
     {
         Neuron* prevNeuron = prevLayer->neurons[i];
-        prevNeuron->weights[neuron->m_myIndex] += 0.1f * prevNeuron->m_output_val * neuron->m_gradient;
+        double gradient = 0.1f * prevNeuron->m_output_val * neuron->m_gradient;
+
+        // Clip gradient if too large
+        if (gradient > clip_threshold) gradient = clip_threshold;
+        if (gradient < -clip_threshold) gradient = -clip_threshold;
+
+        prevNeuron->weights[neuron->m_myIndex] += gradient;
+
+        if (prevNeuron->weights[neuron->m_myIndex] > clip_threshold) 
+            prevNeuron->weights[neuron->m_myIndex] = clip_threshold;
+        if (prevNeuron->weights[neuron->m_myIndex] < -clip_threshold) 
+            prevNeuron->weights[neuron->m_myIndex] = -clip_threshold;
     }
 
 }
 
-float sumDOW(Layer* nextLayer, Neuron* neuron) { // sum of Derivate Of Weigths
+double sumDOW(Layer* nextLayer, Neuron* neuron) { // sum of Derivate Of Weigths
     int i;
-    float sum = 0.0f;
+    double sum = 0.0;
+
     for (i = 0; i < nextLayer->neuronNum - 1; i++) // update this when added BIAS
     {
         sum += neuron->weights[i] * nextLayer->neurons[i]->m_gradient;
+        if (sum > clip_threshold) {
+            sum = clip_threshold;
+        } else if (sum < -clip_threshold) {
+            sum = -clip_threshold;
+        }
+
+        if(isnan(sum)){
+            printf("Nan in sumDow : %d\n",i);
+            exit(0);
+        }
     }
     return sum;
 
 }
 
 void calculateHiddenGrad(Layer* nextLayer, Neuron* neuron) {
-    //Gradient Descent
-    float dow = sumDOW(nextLayer, neuron);
-    neuron->m_gradient = dow * derivActivationF(neuron->m_output_val);
+    double dow = sumDOW(nextLayer, neuron);
+    double gradient = dow * derivActivation(neuron->m_output_val);
+
+    // Clip gradients to a reasonable range (e.g., [-1.0, 1.0])
+    if (gradient > clip_threshold) {
+        gradient = clip_threshold;
+    } else if (gradient < -clip_threshold) {
+        gradient = -clip_threshold;
+    }
+
+    neuron->m_gradient = gradient;
+    // printf("%lf\n",neuron->m_gradient);
 }
-void calculateOutputGrad(float* targetVals, Layer* outputLayer) {
+void calculateOutputGrad(double* targetVals, Layer* outputLayer) {
     int i;
-    float delta;
+    double delta;
     for (i = 0; i < outputLayer->neuronNum - 1; i++) { // Bias dan dolayı neuronNum-1 e kadar gidiyor
         //Gradient Descent
         delta = targetVals[i] - outputLayer->neurons[i]->m_output_val;
-        outputLayer->neurons[i]->m_gradient = delta * derivActivationF(outputLayer->neurons[i]->m_output_val);
+        outputLayer->neurons[i]->m_gradient = delta * derivActivation(outputLayer->neurons[i]->m_output_val);
     }
 }
-void calculateErr(Net* net,float* targetVals){
+void calculateErr(Net* net,double* targetVals){
     int i;
     Layer* outputLayer = net->layers[net->layerNum - 1];
 
-    float m_error = 0.0f;
-    float delta = 0.0f;
+    double m_error = 0.0f;
+    double delta = 0.0f;
     for (i = 0; i < outputLayer->neuronNum - 1; i++)
     {
         delta = targetVals[i] - outputLayer->neurons[i]->m_output_val;
         m_error += delta * delta;
     }
 
-    m_error = m_error / outputLayer->neuronNum;
     m_error = sqrtf(m_error); //RMS
-    net->m_error = m_error;
+    net->m_error += m_error;
 
-    net->m_recentAverageError = (net->m_recentAverageError * net->m_errorSmoothingFactor + net->m_error)
+    net->m_recentAverageError += (net->m_recentAverageError * net->m_errorSmoothingFactor + net->m_error)
         / (net->m_errorSmoothingFactor + 1.0);
 
 }
 
-void backPropagation(Net* net, float* targetVals, int targetSize) {
+void backPropagation(Net* net, double* targetVals, int targetSize) {
 
     Layer* outputLayer = net->layers[net->layerNum - 1];
 
-    //Dont count bias at last layer
     if (outputLayer->neuronNum - 1 != targetSize) {
         printf("\n!!! OUTPUT SIZE DONT MATCH !!!\nCouldnt use backpropagation");
+        return;
     }
 
     //Calculate gradient for output layer
     calculateOutputGrad(targetVals, outputLayer);
-
 
     //Calculate gradient for hidden
     int layerNum;
@@ -318,6 +410,29 @@ void backPropagation(Net* net, float* targetVals, int targetSize) {
 
 }
 
+void gradientDescent(Net* net, int epoch){
+    int i,j;
+
+    for (i = 0; i < epoch; i++)
+    {
+        myNet->m_error = 0;
+        myNet->m_recentAverageError = 0;
+        for (j = 0; j < data.rowNumber; j++)
+        {
+            // int inputSize = sizeof(data.inputVals[i]) / sizeof(data.inputVals[i][0]); 
+            feedForwardNet(myNet,data.inputVals[i],data.colNumber);
+            backPropagation(myNet,data.targetVals[i],data.numOfClasses);
+            // printf("---------------\n");
+            calculateErr(myNet,data.targetVals[i]);
+        }
+        if(j%10==0)
+        printf("Error :%lf \n",(myNet->m_error/data.rowNumber));
+
+        
+    }
+
+}
+
 void printOutputNet(Net* net) {
 
     int i, j, k;
@@ -329,7 +444,6 @@ void printOutputNet(Net* net) {
     }
 
 }
-
 
 void saveNet(Net* net) {
 
@@ -408,7 +522,7 @@ void printNet(Net* net) {
         {
             for (k = 0; k < net->layers[i]->neurons[j]->weightNum; k++)
             {
-                printf("%f ", net->layers[i]->neurons[j]->weights[k]);
+                printf("%lf ", net->layers[i]->neurons[j]->weights[k]);
             }
             printf("\n");
         }
@@ -416,7 +530,7 @@ void printNet(Net* net) {
     }
 
 }
-void readData(FILE* fp, float*** data, float*** targetVal, int* rowNum, int* colNum, int* numOfClasses) {
+void readData(FILE* fp, double*** data, double*** targetVal, int* rowNum, int* colNum, int* numOfClasses) {
     int i, j, targetIndex;
 
     // Read rowNumber, colNumber, and numOfClasses from the file
@@ -424,15 +538,15 @@ void readData(FILE* fp, float*** data, float*** targetVal, int* rowNum, int* col
     printf("Rows: %d, Columns: %d, Classes: %d\n", *rowNum, *colNum, *numOfClasses);
 
     // Allocate memory for inputVals
-    *data = (float**)malloc(sizeof(float*) * (*rowNum));
+    *data = (double**)malloc(sizeof(double*) * (*rowNum));
     for (i = 0; i < (*rowNum); i++) {
-        (*data)[i] = (float*)malloc(sizeof(float) * (*colNum));
+        (*data)[i] = (double*)malloc(sizeof(double) * (*colNum));
     }
 
     // Allocate memory for targetVals
-    *targetVal = (float**)malloc(sizeof(float*) * (*rowNum));
+    *targetVal = (double**)malloc(sizeof(double*) * (*rowNum));
     for (i = 0; i < (*rowNum); i++) {
-        (*targetVal)[i] = (float*)malloc(sizeof(float) * (*numOfClasses));
+        (*targetVal)[i] = (double*)malloc(sizeof(double) * (*numOfClasses));
         for (j = 0; j < (*numOfClasses); j++) {
             (*targetVal)[i][j] = 0;  // Initialize target values to 0
         }
@@ -448,13 +562,13 @@ void readData(FILE* fp, float*** data, float*** targetVal, int* rowNum, int* col
 
         // Read the input values
         for (j = 0; j < (*colNum); j++) {
-            fscanf(fp, "%f ", &(*data)[i][j]);
+            fscanf(fp, "%lf ", &(*data)[i][j]);
             // (*data)[i][j] = (*data)[i][j]/255.0f;
         }
         fscanf(fp, "\n");
     }
 }
-void writeData(float** data, float** targetVal, int* rowNum, int* colNum, int* numOfClasses) {
+void writeData(double** data, double** targetVal, int* rowNum, int* colNum, int* numOfClasses) {
 
     int i, j, k;
     //Read Layer num
@@ -501,30 +615,26 @@ void freeData(Data* data) {
     free(data->targetVals);
 }
 
-float getRandomF() {
-    float result;
-    do {
-        // Generate uniform random numbers in the range (0, 1)
-        float u = ((float)rand() / RAND_MAX);
-        float v = ((float)rand() / RAND_MAX);
+double getRandom() {
+    double result;
+    double u = ((double)rand() / RAND_MAX);
+    double v = ((double)rand() / RAND_MAX);
 
-        // Transform to normal distribution (mean 0, std dev 1)
-        result = sqrt(-2.0f * log(u)) * cos(2.0f * PI * v);
-
-        // Increase spread (e.g., standard deviation of 3)
-        result *= 3.0f;
-    } while (result == 0.0f); // Regenerate if result is 0
-
+    result = sqrt(-2.0f * log(u)) * cos(2.0f * PI * v);
+    if (result>3){
+        result = 3.0f;
+    }else if(result<-3.0){
+        result = -3.0f;
+    }
     return result;
 }
-float activationF(float x) { return tanhf(x); }
-float derivActivationF(float x) { return 1 - tanhf(x) * tanhf(x); }
+double activation(double x) { return tanh(x); }
+double derivActivation(double x) { return 1 - tanh(x) * tanh(x); }
 
-//TO DO
 
-//add extra attributes to struct (needed for Adam)
-//add gd
-//add sgd 
+// double activation(double x) { return 1 / (1 + exp(-x)); }  // Sigmoid function
+// double derivActivation(double x) { return activation(x) * (1 - activation(x)); }  // Derivative of sigmoid
+
 
 int main() {
 
@@ -550,6 +660,7 @@ int main() {
         for (int i = 0; i < layerNum; i++){
             scanf_s(" %d", &topology[i]);
         }
+        
 
         myNet = newNet(topology, layerNum);
 
@@ -564,7 +675,10 @@ int main() {
     }
 
 
-    FILE *fp = fopen("../data/test.txt", "r"); // Open file containing the data
+    FILE *fp = fopen("../data/train_scaled.txt", "r"); // Open file containing the data
+    // FILE *fp = fopen("../data/test.txt", "r"); // Open file containing the data
+    // FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/test.txt", "r"); // Open file containing the data
+
     if (fp == NULL) {
         printf("Error opening file!\n");
         return -1;
@@ -578,18 +692,14 @@ int main() {
 
     int i,j,k;
 
-    for (j = 0; j < 10000; j++)
-    {
-        for (i = 0; i < data.rowNumber; i++)
-        {
-            // int inputSize = sizeof(data.inputVals[i]) / sizeof(data.inputVals[i][0]); 
-            feedForwardNet(myNet,data.inputVals[i],data.colNumber);
-            calculateErr(myNet,data.targetVals[i]);
-            backPropagation(myNet,data.targetVals[i],data.numOfClasses);
-            // printf("---------------\n");
-        }
-        printf("Error :%f \n",myNet->m_recentAverageError);
-    }
+    // feedForwardNet(myNet,data.inputVals[0],data.colNumber);
+    // calculateErr(myNet,data.targetVals[0]);
+    // backPropagation(myNet,data.targetVals[0],data.numOfClasses);
+    // printf("---------------\n");
+    // printOutputNet(myNet);
+    // printNet(myNet);
+
+
 
     for (i = 0; i <4; i++)
     {
@@ -597,24 +707,12 @@ int main() {
         printf("---------------\n");
         feedForwardNet(myNet,data.inputVals[i],data.colNumber);
         printOutputNet(myNet);
-        // for ( j = 0; j < 28; j++)
-        // {
-        //     for (k = 0; k < 28; k++)
-        //     {
-        //         if(data.inputVals[i][j*28+k]>0.5f){
-        //             printf("#");
-        //         }else{
-        //             printf(" ");
-        //         }
-        //     }printf("\n");
-            
-        // }
-        // for (j = 0; j < 10; j++)
-        // {
-        //     if(data.targetVals[i][j]>0){
-        //         printf("target val was :%d\n",j);
-        //     }
-        // }
+        for (j = 0; j < data.numOfClasses; j++)
+        {
+            if(data.targetVals[i][j]>0){
+                printf("target val was :%d\n",j);
+            }
+        }
         
     }
 
