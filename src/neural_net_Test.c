@@ -7,7 +7,7 @@
 // #include <crtdbg.h>
 #define PI 3.14159265358979323846
 #define EPS 0.000001
-#define ETA 0.001
+#define ETA 0.01
 #define GRAD_CLIP 100
 #define WEIGHT_CLIP 100
 
@@ -57,6 +57,9 @@ typedef struct
     double m_errorSmoothingFactor;
     Layer** layers;
 }Net;
+
+void resetGradientsSum(Net* net);
+
 
 //------------------- Neuron Codes -------------------
 Neuron* newNuron(int weightCount, int myIndex) {
@@ -111,7 +114,7 @@ void updateWeightsNeuron(Neuron* neuron, Layer* prevLayer , double learningRate,
         if(avgGradient < -GRAD_CLIP) avgGradient = -GRAD_CLIP;
 
         // prevNeuron->weights[neuron->m_myIndex] += learningRate  * avgGradient;
-        prevNeuron->weights[neuron->m_myIndex] += learningRate * (prevNeuron->m_output_val) * avgGradient;
+        prevNeuron->weights[neuron->m_myIndex] += learningRate * (prevNeuron->m_output_val) * neuron->m_gradient;
     }
     // printf("SUm : %lf\n",neuron->m_gradient_sum);
 }
@@ -126,6 +129,7 @@ void updateWeightsNeuronNew(Neuron* neuron , double learningRate, int batchSize)
         if(avgGradient < -GRAD_CLIP) avgGradient = -GRAD_CLIP;
 
         neuron->weights[i] += learningRate  * avgGradient;
+        neuron->weights[i] += learningRate  * neuron->m_gradient;
         // prevNeuron->weights[neuron->m_myIndex] += learningRate * (prevNeuron->m_output_val) * avgGradient;
     }
     // printf("SUm : %lf\n",neuron->m_gradient_sum);
@@ -254,12 +258,12 @@ void updateWeightsNet(Net* net, double learningRate,int batchSize){
     int n;
     // Go backwards while updating
 
-    for (layerNum = net->layerNum - 1; layerNum >= 0; --layerNum)
+    for (layerNum = net->layerNum - 1; layerNum > 0; --layerNum)
     {
         for (n = 0; n < net->layers[layerNum]->neuronNum - 1; n++)
         {
-            // updateWeightsNeuron(net->layers[layerNum]->neurons[n], net->layers[layerNum - 1] ,learningRate, batchSize);
-            updateWeightsNeuronNew(net->layers[layerNum]->neurons[n],learningRate, batchSize);
+            updateWeightsNeuron(net->layers[layerNum]->neurons[n], net->layers[layerNum - 1] ,learningRate, batchSize);
+            // updateWeightsNeuronNew(net->layers[layerNum]->neurons[n],learningRate, batchSize);
         }
     }
     resetGradientsSum(net);
@@ -298,19 +302,22 @@ double sumDOW(Neuron* neuron,Layer* nextLayer) { // sum of Derivate Of Weigths
 
 void calculateHiddenGrad(Neuron* neuron , Layer* nextLayer) {
     //Gradient Descent
-    double dow = sumDOW(nextLayer, neuron);
-    neuron->m_gradient = dow * derivActivation(neuron->m_output_val); 
+    double delta = sumDOW(neuron, nextLayer);
+    neuron->m_gradient = delta * derivActivation(neuron->m_output_val) ; 
     neuron->m_gradient_sum += neuron->m_gradient;
+    // printf("Hidden Grad: %lf\n",neuron->m_gradient);
 }
 
 void calculateOutputGrad(double* targetVals, Layer* outputLayer) {
     int i;
     double delta;
+    // printf("--------------\n");
     for (i = 0; i < outputLayer->neuronNum - 1; i++) { // Bias dan dolayı neuronNum-1 e kadar gidiyor
         //Gradient Descent -(y[i] - y_hat[i]) * derivative
         delta = (targetVals[i] - outputLayer->neurons[i]->m_output_val );
         outputLayer->neurons[i]->m_gradient = delta * derivActivation(outputLayer->neurons[i]->m_output_val);
-        outputLayer->neurons[i]->m_gradient_sum += delta * derivActivation(outputLayer->neurons[i]->m_output_val);
+        // printf("delta :%lf  derivActiv : %lf\n",delta,derivActivation(outputLayer->neurons[i]->m_output_val));
+        // outputLayer->neurons[i]->m_gradient_sum += delta * derivActivation(outputLayer->neurons[i]->m_output_val);
     }
 }
 
@@ -326,7 +333,7 @@ double calculateErr(Net* net,double* targetVals){
         m_error += delta * delta;
     }
 
-    m_error = m_error / outputLayer->neuronNum + EPS;
+    m_error = m_error / outputLayer->neuronNum;
     m_error = sqrtf(m_error); //RMS
     // net->m_error = m_error;
     // net->m_recentAverageError = (net->m_recentAverageError * net->m_errorSmoothingFactor + net->m_error)
@@ -334,33 +341,44 @@ double calculateErr(Net* net,double* targetVals){
     return m_error;
 }
 
-void backPropagation(Net* net, double* targetVals, int targetSize, double learningRate) {
-
+void backPropagation(Net* net, double* targetVals, int targetSize ) {
     Layer* outputLayer = net->layers[net->layerNum - 1];
 
-    //Dont count bias at last layer
+    // Validate output size
     if (outputLayer->neuronNum - 1 != targetSize) {
-        printf("\n!!! OUTPUT SIZE DONT MATCH !!!\nCouldnt use backpropagation");
+        printf("\n!!! OUTPUT SIZE DOESN'T MATCH !!!\nCouldn't use backpropagation\n");
         return;
     }
 
-    //Calculate gradient for output layer
-    calculateOutputGrad(targetVals, outputLayer);
-
-
-    //Calculate gradient for hidden
-    int layerNum;
-    int n;
-    for (layerNum = net->layerNum - 2; layerNum >= 0; --layerNum)
-    {
-        Layer* hiddenLayer = net->layers[layerNum];
-        Layer* nextLayer = net->layers[layerNum + 1];
-
-        for (n = 0; n < hiddenLayer->neuronNum; ++n) {
-            calculateHiddenGrad( hiddenLayer->neurons[n] ,nextLayer);
-        }
+    // Calculate output layer gradients with improved error computation
+    for (int i = 0; i < outputLayer->neuronNum - 1; i++) { 
+        double output = outputLayer->neurons[i]->m_output_val;
+        double target = targetVals[i];
+        
+        // Improved gradient calculation
+        double gradient = (target - output) * derivActivation(output);
+        outputLayer->neurons[i]->m_gradient = gradient;
     }
 
+    // Backpropagate gradients through hidden layers
+    for (int layerNum = net->layerNum - 2; layerNum >= 0; --layerNum) {
+        Layer* currentLayer = net->layers[layerNum];
+        Layer* nextLayer = net->layers[layerNum + 1];
+
+        for (int n = 0; n < currentLayer->neuronNum - 1; ++n) {
+            Neuron* currentNeuron = currentLayer->neurons[n];
+            
+            // Compute gradient based on next layer's gradients
+            double dow = 0.0;
+            for (int j = 0; j < nextLayer->neuronNum - 1; j++) {
+                dow += currentNeuron->weights[j] * nextLayer->neurons[j]->m_gradient;
+            }
+
+            // Compute gradient
+            currentNeuron->m_gradient = dow * derivActivation(currentNeuron->m_output_val);
+            currentNeuron->m_gradient_sum += currentNeuron->m_gradient;
+        }
+    }
 }
 
 void softmaxOutputNet(Net* net) {
@@ -620,14 +638,15 @@ void trainGD(Net* net , Data* data , int epoch , double learningRate){
     {
         valError = 0;
         loss = 0;
+        // printf("******************\n");
         for (dataIdx = 0; dataIdx < dataCount; dataIdx++)
         {
             feedForwardNet(net ,data->inputVals[dataIdx] , data->colCount);
-            backPropagation(net ,data->targetVals[dataIdx] ,data->numOfClasses , learningRate);
+            backPropagation(net ,data->targetVals[dataIdx] ,data->numOfClasses);
             // printf("---------------\n");
             loss += calculateErr(net , data->targetVals[dataIdx]);
+            updateWeightsNet(net, learningRate, 1);
         }
-        updateWeightsNet(net, learningRate, dataCount);
 
         // for (dataIdx =  0; dataIdx <splitIdx; dataIdx++)
         // {
@@ -636,7 +655,7 @@ void trainGD(Net* net , Data* data , int epoch , double learningRate){
         // }
         loss = loss/ dataCount;
         // valError = valError/ splitIdx;
-        printf("Loss :%lf ,\n", loss);
+        printf("Loss :%lf \n", loss);
         // printf(" Validation Error:%lf\n",valError);
     }
 
@@ -676,8 +695,8 @@ int main() {
     srand(time(NULL)); 
 
     // FILE *fp = fopen("../data/train_0_1.txt", "r"); // Open file containing the data
-    FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/test.txt", "r"); // Open file containing the data
-    // FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/train_8816.txt", "r"); // Open file containing the data
+    // FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/test.txt", "r"); // Open file containing the data
+    FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/train_8816.txt", "r"); // Open file containing the data
     // FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/train_full.txt", "r"); // Open file containing the data
 
     if (fp == NULL) {
@@ -703,6 +722,7 @@ int main() {
     }
 
     trainGD(myNet, &trainData , 1000 , ETA);
+    // printNet(myNet);
 
     
 

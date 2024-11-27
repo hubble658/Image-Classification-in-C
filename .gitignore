@@ -4,3 +4,4 @@ src/weights.txt
 data/train_scaled.txt
 src/.cph/.neural_net_gd.c_8a0c8ff69bcc6262d2d5d36306dfa99d.prob
 src/claude_nn.exe
+*.txt

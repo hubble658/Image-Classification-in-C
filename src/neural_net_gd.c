@@ -7,7 +7,7 @@
 // #include <crtdbg.h>
 #define PI 3.14159265358979323846
 #define EPS 0.000001
-#define ETA 0.01
+#define ETA 0.001
 #define GRAD_CLIP 100
 #define WEIGHT_CLIP 100
 
@@ -610,7 +610,7 @@ void trainGD(Net* net , Data* data , int epoch , double learningRate){
             backPropagation(net ,data->targetVals[dataIdx] ,data->numOfClasses , learningRate);
             // printf("---------------\n");
             loss += calculateErr(net , data->targetVals[dataIdx]);
-            updateWeightsNet(net, learningRate, dataCount - splitIdx);
+            updateWeightsNet(net, learningRate, 1);
         }
 
         for (dataIdx =  0; dataIdx <splitIdx; dataIdx++)
@@ -660,7 +660,7 @@ int main() {
 
     // FILE *fp = fopen("../data/train_0_1.txt", "r"); // Open file containing the data
     // FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/test.txt", "r"); // Open file containing the data
-    FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/train_0_1.txt", "r"); // Open file containing the data
+    FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/train_8816.txt", "r"); // Open file containing the data
 
     if (fp == NULL) {
         printf("Error opening file!\n");
