@@ -2,8 +2,8 @@
 # Skip the first row and separate columns with spaces and rows with newlines.
 import csv
 
-csv_file_path = 'Projects\Image_Classification_in_C\\train.csv'
-txt_file_output = 'Projects\Image_Classification_in_C\\train_convert.txt'
+csv_file_path = 'Projects\\Image_Classification_in_C\\data\\fashion-mnist_train.csv'
+txt_file_output = 'Projects\\Image_Classification_in_C\\data\\fashion-mnist_train.txt'
 
 # Read the CSV file, process it, and write the output to a text file
 with open(csv_file_path, 'r') as csv_file:
