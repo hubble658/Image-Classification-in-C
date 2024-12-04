@@ -8,3 +8,5 @@ src/claude_nn.exe
 *.txt
 data/train_full.txt
 data/fashion-mnist_train.csv
+/belgeler
+/data

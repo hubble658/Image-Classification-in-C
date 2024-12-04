@@ -1,40 +1,47 @@
+
 import matplotlib.pyplot as plt
 
-# File name
-file_name = "data.txt"
+# Dosya yolunu buraya girin
+file_path = "D:\Codes\Projects\Image_Classification_in_C\son\\10_Sınıflı\\adam.txt"
 
-# Initialize lists to store the data
-loss_values = []
-iterations = []
-times = []
+# Verileri saklamak için boş listeler oluştur
+loss = []
+time = []
+iteration = []
 
-# Read the data from the file
-with open(file_name, 'r') as file:
+# Dosyayı oku ve verileri ayır
+with open(file_path, "r") as file:
     for line in file:
         try:
-            # Split the line into components
-            loss, iteration, time = map(float, line.split())
-            loss_values.append(loss)
-            iterations.append(iteration)
-            times.append(time)
+            # Her satırı ayrıştır
+            l, t, i = map(float, line.strip().split())
+            loss.append(l)
+            time.append(t)
+            iteration.append(i)
         except ValueError:
-            # Skip lines that don't match the expected format
-            print(f"Skipping invalid line: {line.strip()}")
+            print(f"Satır işlenemedi: {line.strip()}")
 
-# Plot Loss vs Time
-plt.figure(figsize=(10, 5))
-plt.plot(times, loss_values, marker='o', linestyle='-', color='b')
-plt.title("Loss vs Time")
-plt.xlabel("Time")
+# Grafik oluşturma
+plt.figure(figsize=(12, 6))
+
+# Loss-Time Grafiği
+plt.subplot(1, 2, 1)
+plt.plot(time, loss, label="Loss-Time", color="blue", marker="o", linewidth=0.5, markersize=4)
+plt.xlabel("Time(seconds)")
 plt.ylabel("Loss")
-plt.grid(True)
-plt.show()
+plt.title("Loss vs Time")
+plt.grid()
+plt.legend()
 
-# Plot Loss vs Iteration
-plt.figure(figsize=(10, 5))
-plt.plot(iterations, loss_values, marker='o', linestyle='-', color='g')
-plt.title("Loss vs Iteration")
+# Loss-Iteration Grafiği
+plt.subplot(1, 2, 2)
+plt.plot(iteration, loss, label="Loss-Iteration", color="green", marker="o", linewidth=0.5, markersize=4)
 plt.xlabel("Iteration")
 plt.ylabel("Loss")
-plt.grid(True)
+plt.title("Loss vs Iteration")
+plt.grid()
+plt.legend()
+
+# Grafikleri göster
+plt.tight_layout()
 plt.show()

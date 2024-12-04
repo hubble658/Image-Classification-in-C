@@ -1,69 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <time.h>
-#include <math.h>
-
-//  #define _CRTDBG_MAP_ALLOC //Memoryleak test etmek icindir. Memory Leak bulunmamaktadır.
-//  #include <crtdbg.h>
-
-#define PI 3.14159265358979323846
-#define EPS 0.00000001
-#define ETA 0.01
-#define GRAD_CLIP 100
-#define WEIGHT_CLIP 100 
-
-double getRandom();
-double activation(double x);
-double derivActivation(double x);
-void printNumber(double* values, int lenght);
-typedef enum {
-    INPUT_LAYER,
-    HIDDEN_LAYER,
-    OUTPUT_LAYER
-} LayerType;
-
-typedef struct {
-    double** inputVals;
-    double** targetVals;
-    int rowCount;
-    int colCount;
-    int numOfClasses;
-}Data;
-
-typedef struct
-{
-    double* weights; // Neurons Connections
-    double* delta_weights; // difference in weights
-    double* firstMoment; // v for ADAM
-    double* secondMoment; // m for ADAM
-    double m_output_val; // Calculated Value that will be multiplied with weights
-    double m_gradient;
-
-    int weightCount;
-    int m_myIndex;
-} Neuron;
-
-typedef struct
-{
-    int neuronNum;
-    Neuron** neurons; // Pointer to array of neuron pointers
-    LayerType type;
-
-} Layer;
-
-typedef struct
-{
-    int* topology;
-    int layerNum;
-
-    double m_error;
-    double m_recentAverageError;
-    double m_errorSmoothingFactor;
-    Layer** layers;
-}Net;
-
-void resetDeltaWeights(Net* net);
-
+#include "neural_net.h"
 
 //------------------- Neuron Codes -------------------
 
@@ -71,8 +6,8 @@ Neuron* newNuron(int weightCount, int myIndex) {
     int i;
     Neuron* neuron = (Neuron*)malloc(sizeof(Neuron));
 
-    neuron->m_output_val = 0.0f; // default value
-    neuron->m_gradient = 0.0f; // default value
+    neuron->output_val = 0.0f; // default value
+    neuron->gradient = 0.0f; // default value
     neuron->m_myIndex = myIndex;
     neuron->weightCount = weightCount;
     neuron->weights = NULL; // null for output layer
@@ -116,9 +51,9 @@ void feedForwardNeuron(Neuron* neuron, Layer* prevLayer) {
     for (i = 0; i < prevLayer->neuronNum; i++)
     {
         sum += prevLayer->neurons[i]->weights[neuron->m_myIndex] *
-            prevLayer->neurons[i]->m_output_val;
+            prevLayer->neurons[i]->output_val;
     }
-    neuron->m_output_val = activation(sum);
+    neuron->output_val = activation(sum);
 }
 
 void updateWeightsNeuron(Neuron* neuron, Layer* nextLayer, double learningRate, int batchSize) {
@@ -131,13 +66,13 @@ void updateWeightsNeuron(Neuron* neuron, Layer* nextLayer, double learningRate, 
         if (avgDelta > GRAD_CLIP) avgDelta = GRAD_CLIP;
         if (avgDelta < -GRAD_CLIP) avgDelta = -GRAD_CLIP;
         //Update weight
-        neuron->weights[nextNeuron->m_myIndex] += learningRate * avgDelta;
+        neuron->weights[nextNeuron->m_myIndex] -= learningRate * avgDelta;
     }
 }
 
 void updateWeightsNeuronADAM(Neuron* neuron, Layer* nextLayer, double learningRate, int batchSize, double beta1, double beta2) {
     int i;
-    double firstM, secondM, firstM_hat, secondM_hat;
+    double firstM, secondM;
     for (i = 0; i < nextLayer->neuronNum-1; i++)
     {
         Neuron* nextNeuron = nextLayer->neurons[i];
@@ -148,21 +83,18 @@ void updateWeightsNeuronADAM(Neuron* neuron, Layer* nextLayer, double learningRa
         //Update weight
         firstM = neuron->firstMoment[nextNeuron->m_myIndex] * beta1 + (1 - beta1) * avgDelta;
         secondM = neuron->secondMoment[nextNeuron->m_myIndex] * beta2 + (1 - beta2) * (avgDelta * avgDelta);
-        // firstM_hat  = firstM / (1 - pow(firstM,t))
-        // secondM_hat = secondM / (1 - pow(secondM,t))
-        neuron->weights[nextNeuron->m_myIndex] += learningRate * (firstM / (sqrt(secondM) + EPS));
+        neuron->weights[nextNeuron->m_myIndex] -= learningRate * (firstM / (sqrt(secondM) + EPS));
     }
 }
 
 // ------------------- Layer Codes -------------------
 
-Layer* newLayer(int neuronNum, int nextNeuronNum, LayerType type) {
+Layer* newLayer(int neuronNum, int nextNeuronNum) {
 
     neuronNum = neuronNum + 1; // neuronNum+1 because we add bias as a neuron
 
     Layer* layer = (Layer*)malloc(sizeof(Layer));
     layer->neurons = (Neuron**)malloc(sizeof(Neuron*) * neuronNum);
-    layer->type = type;
     layer->neuronNum = neuronNum;
 
     int i;
@@ -184,7 +116,7 @@ Layer* newLayer(int neuronNum, int nextNeuronNum, LayerType type) {
     }
 
     //Set 1 to bias value. It will be ajdusted via weight
-    layer->neurons[neuronNum - 1]->m_output_val = 1.0f;
+    layer->neurons[neuronNum - 1]->output_val = 1.0f;
 
     return layer;
 }
@@ -207,7 +139,6 @@ void feedForwardLayer(Layer* prevLayer, Layer* currLayer) {
     {
         feedForwardNeuron(currLayer->neurons[i], prevLayer);
     }
-
 }
 
 // ------------------- Net Codes -------------------
@@ -219,19 +150,16 @@ Net* newNet(int* topology, int layerNum) {
     net->topology = topology;
     net->layerNum = layerNum;
     net->layers = (Layer**)malloc(sizeof(Layer*) * layerNum);
-    net->m_errorSmoothingFactor = 100.0f;
-    net->m_recentAverageError = 0;
-    net->m_error = 0;
 
     //First input layer
-    net->layers[0] = newLayer(net->topology[0], net->topology[1], INPUT_LAYER);
+    net->layers[0] = newLayer(net->topology[0], net->topology[1]);
     //Hidden layers
     for (i = 1; i < layerNum - 1; i++)
     {
-        net->layers[i] = newLayer(net->topology[i], net->topology[i + 1], HIDDEN_LAYER);
+        net->layers[i] = newLayer(net->topology[i], net->topology[i + 1]);
     }
     //Output layer
-    net->layers[layerNum - 1] = newLayer(net->topology[layerNum - 1], 0, OUTPUT_LAYER);
+    net->layers[layerNum - 1] = newLayer(net->topology[layerNum - 1], 0);
 
     return net;
 }
@@ -259,13 +187,12 @@ void feedForwardNet(Net* net, double* inputVals, int inputSize) {
     }
     //Set first layers value with input
     for (i = 0; i < net->layers[0]->neuronNum - 1; i++) {
-        net->layers[0]->neurons[i]->m_output_val = inputVals[i];
+        net->layers[0]->neurons[i]->output_val = inputVals[i];
     }
     //Feed layers
     for (i = 1; i < net->layerNum; i++) {
         feedForwardLayer(net->layers[i - 1], net->layers[i]);
     }
-
 }
 
 void updateWeightsNet(Net* net, double learningRate, int batchSize) {
@@ -325,8 +252,8 @@ double sumDOW(Neuron* neuron, Layer* nextLayer) { // sum of Derivative Of Weigth
     double sum = 0;
     for (i = 0; i < nextLayer->neuronNum - 1; i++)
     {
-        sum += neuron->weights[i] * nextLayer->neurons[i]->m_gradient;
-        neuron->delta_weights[i] += neuron->m_output_val * nextLayer->neurons[i]->m_gradient; // Required bc GradientDescent
+        sum += neuron->weights[i] * nextLayer->neurons[i]->gradient;
+        neuron->delta_weights[i] += neuron->output_val * nextLayer->neurons[i]->gradient; // Required bc GradientDescent
     }
     return sum;
 }
@@ -338,37 +265,51 @@ void calculateHiddenGrad(Layer* currentLayer, Layer* nextLayer) {
 
         // Compute gradient based on next layer's gradients
         double dow = sumDOW(currentNeuron, nextLayer);
-        currentNeuron->m_gradient = dow * derivActivation(currentNeuron->m_output_val);
+        currentNeuron->gradient = dow * derivActivation(currentNeuron->output_val);
     }
 }
 
 void calculateOutputGrad(double* targetVals, Layer* outputLayer) {
     for (int i = 0; i < outputLayer->neuronNum - 1; i++) {
-        double output = outputLayer->neurons[i]->m_output_val;
+        double output = outputLayer->neurons[i]->output_val;
         double target = targetVals[i];
-        double gradient = (target - output) * derivActivation(output);
-        outputLayer->neurons[i]->m_gradient = gradient;
+        outputLayer->neurons[i]->gradient = output - target;
+        // double gradient = (output - target ) * derivActivation(output); // for tanh
     }
 }
 
+void softmaxNet(Net* net) {
+    int i;
+    Layer* outputLayer = net->layers[net->layerNum - 1];
+    double expSum = 0.0;
+    double maxVal = -INFINITY;
+    // Find max val
+    for (i = 0; i < outputLayer->neuronNum - 1; i++) {
+        if (outputLayer->neurons[i]->output_val > maxVal) {
+            maxVal = outputLayer->neurons[i]->output_val;
+        }
+    }
+    // Normalized softmax
+    for (i = 0; i < outputLayer->neuronNum - 1; i++) {
+        expSum += exp(outputLayer->neurons[i]->output_val - maxVal);
+    }
+    for (i = 0; i < outputLayer->neuronNum - 1; i++) {
+        double softmaxVal = exp(outputLayer->neurons[i]->output_val - maxVal) / expSum;
+        outputLayer->neurons[i]->output_val = softmaxVal;
+    }
+}
 double calculateErr(Net* net, double* targetVals) {
     int i;
     Layer* outputLayer = net->layers[net->layerNum - 1];
-
-    double m_error = 0.0f;
-    double delta = 0.0f;
-    for (i = 0; i < outputLayer->neuronNum - 1; i++)
-    {
-        delta = targetVals[i] - outputLayer->neurons[i]->m_output_val;
-        m_error += delta * delta;
+    double crossEntropyLoss = 0.0;
+    for (i = 0; i < outputLayer->neuronNum - 1; i++) {
+        double softmaxVal = outputLayer->neurons[i]->output_val ;
+        // Cross-Entropy Loss
+        if (targetVals[i] > 0) {
+            crossEntropyLoss -= targetVals[i] * log(fmax(softmaxVal, 1e-15));
+        }
     }
-
-    m_error = m_error / outputLayer->neuronNum;
-    m_error = sqrt(m_error); //RMS
-    // net->m_error = m_error;
-    // net->m_recentAverageError = (net->m_recentAverageError * net->m_errorSmoothingFactor + net->m_error)
-    //     / (net->m_errorSmoothingFactor + 1.0);
-    return m_error;
+    return crossEntropyLoss;
 }
 
 void backPropagation(Net* net, double* targetVals, int targetSize) {
@@ -380,6 +321,7 @@ void backPropagation(Net* net, double* targetVals, int targetSize) {
         return;
     }
 
+    // softmaxNet(net, targetVals);
     calculateOutputGrad(targetVals, outputLayer);
 
     // Backpropagate gradients through hidden layers
@@ -391,26 +333,11 @@ void backPropagation(Net* net, double* targetVals, int targetSize) {
     }
 }
 
-void softmaxOutputNet(Net* net) {
 
-    int i;
-    double sum = 0.0;
-    double temprature = 2.0;
-
-    int lastLayer = net->layerNum - 1;
-    for (i = 0; i < net->layers[lastLayer]->neuronNum - 1; i++) {
-        sum += exp(net->layers[lastLayer]->neurons[i]->m_output_val / temprature);
-    }
-    for (i = 0; i < net->layers[lastLayer]->neuronNum - 1; i++) {
-        double subAns = exp(net->layers[lastLayer]->neurons[i]->m_output_val / temprature) / sum;
-        printf("%d.Output :%.3f\n", i, subAns);
-    }
-
-}
 
 void testResults(Net* net, Data* data, int splitIdx, int* correct, int* wrong) {
     int i, j, target, ansIdx;
-    Layer* ouputLayer = net->layers[net->layerNum - 1];
+    Layer* outputLayer = net->layers[net->layerNum - 1];
     *wrong = 0;
     *correct = 0;
 
@@ -424,24 +351,44 @@ void testResults(Net* net, Data* data, int splitIdx, int* correct, int* wrong) {
             if (data->targetVals[i][j] == 1) { target = j; }
         }
         //Find which answer is most likely
-        for (j = 0; j < data->numOfClasses; j++) {
-            if (ouputLayer->neurons[j]->m_output_val > ouputLayer->neurons[ansIdx]->m_output_val) {
+        for (j = 1; j < data->numOfClasses; j++) {
+            if (outputLayer->neurons[j]->output_val > outputLayer->neurons[ansIdx]->output_val) {
                 ansIdx = j;
             }
         }
-
         if (target == ansIdx) {
             *correct = *correct + 1;
         }
         else {
             *wrong = *wrong + 1;
-            if (*wrong == 1) {
-                printNumber(data->inputVals[i], data->colCount);
-                printf("Target was: %d, Models Guess: %d, Certainty: %lf\n", target, ansIdx, ouputLayer->neurons[ansIdx]->m_output_val);
-            }
         }
     }
 }
+void testSample(Net* net, Data* data, int testIdx) {
+    int i, target, ans;
+    Layer* outputLayer = net->layers[net->layerNum - 1];
+
+    feedForwardNet(net, data->inputVals[testIdx], data->colCount);
+    softmaxNet(net);
+
+    target = 0;
+    ans = 0;
+
+    //Find target val
+    for (i = 0; i < data->numOfClasses; i++) {
+        if (data->targetVals[testIdx][i] == 1) { target = i; }
+    }
+    printf("---------------\n");
+    printf("Target was :%d\n", target);
+
+    //Find which answer is most likely
+    for (i = 0; i < data->numOfClasses; i++) {
+        printf("Probablity of %d : %.3lf\n", i, outputLayer->neurons[i]->output_val);
+    }
+    printf("---------------\n");
+    
+}
+
 
 void printNumber(double* values, int lenght) {
     int i, j, K;
@@ -451,7 +398,7 @@ void printNumber(double* values, int lenght) {
     {
         for (j = 0; j < n; j++)
         {
-            K = values[i * 28 + j] * 12;
+            K = values[i * 28 + j] * 11;
             tmp = ".,-~:;=!*#$@"[K > 0 ? K : 0];
             printf("%c ", tmp);
         }
@@ -475,13 +422,8 @@ double getRandom() {
     double v = ((double)rand() / RAND_MAX);
     result = sqrt(-2.0f * log(u)) * cos(2.0f * PI * v);
 
-    return fmax(-1.0f, fmin(1.0f, result));
+    return fmax(-0.10f, fmin(0.10f, result));
 }
-
-double activation(double x) { return tanh(x); }
-double derivActivation(double x) { return 1 - tanh(x) * tanh(x); }
-// double activation(double x) { return x > 0 ? x : 0.01 * x; } // ReLu
-// double derivActivation(double x) { return x > 0 ? 1 : 0.01; }
 
 // ------------------- Save-Read Neural Net -------------------
 
@@ -497,9 +439,11 @@ void getNetProperties(Net** net, Data* data) {
         return;
     }
 
-    printf("Enter the neuron number for Hidden layers:\n");
-    for (int i = 1; i < layerNum - 1; i++) {
-        scanf_s("%d", &topology[i]);
+    if(layerNum>2){
+        printf("Enter the neuron number for Hidden layers:\n");
+        for (int i = 1; i < layerNum - 1; i++) {
+            scanf_s("%d", &topology[i]);
+        }
     }
 
     // Set input and output layer sizes
@@ -509,12 +453,9 @@ void getNetProperties(Net** net, Data* data) {
     *net = newNet(topology, layerNum);
 }
 
-void saveNet(Net* net) {
+void saveNet(Net* net, FILE* fp) {
 
     int i, j, k;
-    FILE* fp;
-    fp = fopen("weights.txt", "w");
-
     //Write layer num
     fprintf(fp, "%d\n", net->layerNum);
     //Write topology
@@ -538,11 +479,9 @@ void saveNet(Net* net) {
     }
 }
 
-Net* readNet() {
+Net* readNet(FILE* fp) {
 
     int i, j, k;
-    FILE* fp;
-    fp = fopen("weights.txt", "r");
 
     //Read Layer num
     int layerNum;
@@ -567,7 +506,7 @@ Net* readNet() {
         {
             for (k = 0; k < net->layers[i]->neurons[j]->weightCount; k++)
             {
-                fscanf_s(fp, "%f ", &net->layers[i]->neurons[j]->weights[k]);
+                fscanf_s(fp, "%lf ", &net->layers[i]->neurons[j]->weights[k]);
             }
             fscanf_s(fp, "\n");
         }
@@ -605,7 +544,7 @@ void readData(FILE* fp, Data* data) {
     fscanf(fp, "%d \n", &data->numOfClasses);
 
     printf("Rows: %d, Columns: %d, Classes: %d\n", data->rowCount, data->colCount, data->numOfClasses);
-    printf("Veriler okunuyor ...\n");
+    printf("Reading Data ...\n");
 
     // Allocate memory for inputVals and tagertVals
     data->inputVals = (double**)malloc(sizeof(double*) * (data->rowCount));
@@ -614,7 +553,7 @@ void readData(FILE* fp, Data* data) {
         data->inputVals[i] = (double*)malloc(sizeof(double) * (data->colCount));
         data->targetVals[i] = (double*)malloc(sizeof(double) * (data->numOfClasses));
         for (j = 0; j < (data->numOfClasses); j++) {
-            data->targetVals[i][j] = -1;  // Initialize target values to -1
+            data->targetVals[i][j] = 0;  // Initialize target values to -1
         }
     }
 
@@ -648,16 +587,13 @@ void printData(Data* data) { // To be able to see data
 
     for (i = 0; i < data->rowCount; i++)
     {
-
-        for (j = 0; j < data->numOfClasses; j++)
-        {
+        for (j = 0; j < data->numOfClasses; j++){
             if (data->targetVals[i][j] != 0) {
                 printf("%d ", j);
             }
         }
 
-        for (j = 0; j < data->colCount; j++)
-        {
+        for (j = 0; j < data->colCount; j++){
             printf("%.0f ", data->inputVals[i][j]);
         }
         printf("\n");
@@ -690,18 +626,21 @@ void trainGD(Net* net, Data* data, int epoch, double learningRate) {
     int splitIdx = (2 * dataCount) / 10; // 80-20 ratio. First 20 percent is for testing the model 
     batchSize = dataCount - splitIdx;
     double loss = 0;
-    double valError = 0;
+    double valError = 1; // Must be greater than stop_error 
 
 
     //Train
-    for (epochIdx = 0; epochIdx < epoch; epochIdx++)
+    epochIdx = 0;
+    while (epochIdx < epoch && valError > STOP_ERROR)
     {
+        epochIdx++;
         valError = 0;
         loss = 0;
 
         for (dataIdx = splitIdx; dataIdx < dataCount; dataIdx++)
         {
             feedForwardNet(net, data->inputVals[dataIdx], data->colCount);
+            softmaxNet(net);
             backPropagation(net, data->targetVals[dataIdx], data->numOfClasses);
             loss += calculateErr(net, data->targetVals[dataIdx]);
         }
@@ -712,12 +651,14 @@ void trainGD(Net* net, Data* data, int epoch, double learningRate) {
         for (dataIdx = 0; dataIdx < splitIdx; dataIdx++)
         {
             feedForwardNet(net, data->inputVals[dataIdx], data->colCount);
+            softmaxNet(net);
             valError += calculateErr(net, data->targetVals[dataIdx]);
         }
-        loss = loss / (dataCount - splitIdx);
+        loss = loss / batchSize;
         valError = valError / splitIdx;
         printf("Loss :%lf ,", loss);
         printf(" Validation Error:%lf\n", valError);
+
     }
 
     //Test how many correct answers (test data is from 0 - splitIdx )
@@ -725,7 +666,7 @@ void trainGD(Net* net, Data* data, int epoch, double learningRate) {
     testResults(net, data, splitIdx, &correct, &wrong);
 
     double accuracy = 100.0 * (correct) / (correct + wrong);
-    printf("---- Test Results ---- \nWrong    :%d\nCorrect  :%d\nAccuracy :%.3lf", wrong, correct, accuracy);
+    printf("---- Test Results ---- \nWrong    :%d\nCorrect  :%d\nAccuracy :%.3lf\n", wrong, correct, accuracy);
 
 }
 
@@ -736,29 +677,32 @@ void trainSGD(Net* net, Data* data, int epoch, int batchSize, double learningRat
     int splitIdx = (2 * dataCount) / 10; // 80-20 ratio. First 20 percent is for testing the model 
     trainSize = dataCount - splitIdx;
     double loss = 0;
-    double valError = 0;
+    double valError = 1;//Must be greater than stop_error at first
 
-    if (batchSize >= trainSize) {
+    if (batchSize >= trainSize || batchSize == 0) {
         printf("Batch size is cant be equal to or greater than train size");
         return;
     }
 
 
     //Train
-    for (epochIdx = 0; epochIdx < epoch; epochIdx++)
+    epochIdx = 0;
+    while (epochIdx < epoch && valError > STOP_ERROR)
     {
         valError = 0;
         loss = 0;
+        epochIdx++;
 
         // Shuffle indices
         int* indices = (int*)malloc(trainSize * sizeof(int));
         generateRandomElements(splitIdx, dataCount - 1, batchSize, indices);
 
-
+        //Calculate gradients etc.
         for (dataIdx = 0; dataIdx < batchSize; dataIdx++)
         {
             shuffledIdx = indices[dataIdx];
             feedForwardNet(net, data->inputVals[shuffledIdx], data->colCount);
+            softmaxNet(net);
             backPropagation(net, data->targetVals[shuffledIdx], data->numOfClasses);
             loss += calculateErr(net, data->targetVals[shuffledIdx]);
         }
@@ -769,12 +713,14 @@ void trainSGD(Net* net, Data* data, int epoch, int batchSize, double learningRat
         for (dataIdx = 0; dataIdx < splitIdx; dataIdx++)
         {
             feedForwardNet(net, data->inputVals[dataIdx], data->colCount);
+            softmaxNet(net);
             valError += calculateErr(net, data->targetVals[dataIdx]);
         }
-        loss = loss / (dataCount - splitIdx);
+        loss = loss / batchSize;
         valError = valError / splitIdx;
         printf("Loss :%lf ,", loss);
         printf(" Validation Error:%lf\n", valError);
+
     }
 
     //Test how many correct answers (test data is from 0 - splitIdx )
@@ -782,7 +728,7 @@ void trainSGD(Net* net, Data* data, int epoch, int batchSize, double learningRat
     testResults(net, data, splitIdx, &correct, &wrong);
 
     double accuracy = 100.0 * (correct) / (correct + wrong);
-    printf("---- Test Results ---- \nWrong    :%d\nCorrect  :%d\nAccuracy :%.3lf", wrong, correct, accuracy);
+    printf("---- Test Results ---- \nWrong    :%d\nCorrect  :%d\nAccuracy :%.3lf\n", wrong, correct, accuracy);
 
 }
 
@@ -793,19 +739,29 @@ void trainADAM(Net* net, Data* data, int epoch, int batchSize, double learningRa
     int splitIdx = (2 * dataCount) / 10; // 80-20 ratio. First 20 percent is for testing the model 
     trainSize = dataCount - splitIdx;
     double loss = 0;
-    double valError = 0;
+    double valError = 1; // Must be greater than stop_error
 
-    if (batchSize >= trainSize) {
+    if (batchSize >= trainSize || batchSize == 0) {
         printf("Batch size is cant be equal to or greater than train size");
         return;
     }
 
+    clock_t start; 
+    clock_t currentTime; 
+    start = clock(); 
+    
+
+    // To save loss-time , loss-iteration values
+    // FILE* fp;
+    // fp = fopen("adam.txt", "w");
 
     //Train
-    for (epochIdx = 0; epochIdx < epoch; epochIdx++)
-    {
+    epochIdx = 0;
+    while (epochIdx < epoch && valError > STOP_ERROR)
+    {        
         valError = 0;
         loss = 0;
+        epochIdx++;
 
         // Shuffle indices
         int* indices = (int*)malloc(trainSize * sizeof(int));
@@ -816,6 +772,7 @@ void trainADAM(Net* net, Data* data, int epoch, int batchSize, double learningRa
         {
             shuffledIdx = indices[dataIdx];
             feedForwardNet(net, data->inputVals[shuffledIdx], data->colCount);
+            softmaxNet(net);
             backPropagation(net, data->targetVals[shuffledIdx], data->numOfClasses);
             loss += calculateErr(net, data->targetVals[shuffledIdx]);
         }
@@ -826,67 +783,29 @@ void trainADAM(Net* net, Data* data, int epoch, int batchSize, double learningRa
         for (dataIdx = 0; dataIdx < splitIdx; dataIdx++)
         {
             feedForwardNet(net, data->inputVals[dataIdx], data->colCount);
+            softmaxNet(net);
             valError += calculateErr(net, data->targetVals[dataIdx]);
         }
-        loss = loss / (dataCount - splitIdx);
+        loss = loss / batchSize;
         valError = valError / splitIdx;
         printf("Loss :%lf ,", loss);
-        printf(" Validation Error:%lf\n", valError);
+        printf(" Validation Error:%lf \n", valError);
+
+        // To save loss-time , loss-iteration values
+        // currentTime = clock() - start; 
+        // double time_taken = ((double)currentTime)/CLOCKS_PER_SEC; // in seconds 
+        // fprintf(fp,"%.4lf %.4lf %d\n",valError,time_taken,epochIdx);
+
     }
 
     //Test how many correct answers (test data is from 0 - splitIdx )
+
     int correct, wrong;
     testResults(net, data, splitIdx, &correct, &wrong);
-
     double accuracy = 100.0 * (correct) / (correct + wrong);
-    printf("---- Test Results ---- \nWrong    :%d\nCorrect  :%d\nAccuracy :%.3lf", wrong, correct, accuracy);
+    printf("---- Test Results ---- \nWrong    :%d\nCorrect  :%d\nAccuracy :%.3lf\n", wrong, correct,accuracy);
 
 }
 
-
-int main() {
-
-    // _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
-
-    // srand(time(NULL)); 
-    // FILE *fp = fopen("../data/train_0_1.txt", "r"); // Open file containing the data
-    // FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/test_xor.txt", "r"); // Open file containing the data
-    // FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/train_full.txt", "r"); // Open file containing the data
-    //FILE* fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/fashion-mnist_train_scaled.txt", "r"); // Open file containing the data
-     FILE *fp = fopen("D:/Codes/Projects/Image_Classification_in_C/data/train_0_1.txt", "r"); // Open file containing the data
-
-    if (fp == NULL) {
-        printf("Error opening file!\n");
-        return -1;
-    }
-    Data trainData;
-    readData(fp, &trainData);
-    fclose(fp);
-
-
-    printf("New Net: 1 , Load Net from file : 2\nOption: 1\n");
-    Net* myNet;
-    int option = 1;
-    // scanf_s("%d",&option);
-
-    printf("Input(%d) and output(%d) layer set automatically.\n", trainData.colCount, trainData.numOfClasses);
-    if (option == 1) {
-        getNetProperties(&myNet, &trainData);
-    }
-    else {
-        myNet = readNet();
-        printNet(myNet);
-    }
-
-    // printNumber(trainData.inputVals[22],trainData.colCount);
-    trainGD(myNet, &trainData, 10, ETA);
-    //trainSGD(myNet, &trainData , 10 , 100, ETA);
-    //trainADAM(myNet, &trainData , 10 , 100, ETA);
-    // printNet(myNet);
-
-    freeNet(myNet);
-    freeData(&trainData);
-    
-    //  _CrtDumpMemoryLeaks();
-    return 0;
-}
+double activation(double x) { return x > 0 ? x : 0.01 * x; } // ReLu
+double derivActivation(double x) { return x > 0 ? 1 : 0.01; }
