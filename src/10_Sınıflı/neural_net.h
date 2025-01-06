@@ -100,7 +100,9 @@ void   testSample(Net* net, Data* data, int testIdx);
 
 void   testResults(Net* net, Data* data, int splitIdx, int* correct, int* wrong);
 
-void   generateRandomElements(int start, int end, int k, int* result);
+void shuffleArray(int* array, int size);
+
+int *generateRandomElements(int start, int end);
 
 // ------------------- Net Calculatinons -------------------
 double sumDOW(Neuron* neuron, Layer* nextLayer);

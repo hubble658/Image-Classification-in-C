@@ -435,8 +435,8 @@ double derivActivation(double x) { return 1 - tanh(x) * tanh(x); }
 
 void getNetProperties(Net** net, Data* data) {
     int layerNum = 0;
-    printf("Enter Hidden layer number: ");
-    scanf_s("%d", &layerNum);
+    // printf("Enter Hidden layer number: ");
+    // scanf_s("%d", &layerNum);
     layerNum += 2; // Add input and output layers
 
     int* topology = (int*)malloc(sizeof(int) * layerNum);

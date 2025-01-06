@@ -407,15 +407,27 @@ void printNumber(double* values, int lenght) {
     printf("\n");
 }
 
-void generateRandomElements(int start, int end, int k, int* result) {
-    if (k > end - start) {
-        printf("Random element number is out of bound. There will be repeated numbers\n");
-    }
-    for (int i = 0; i < k; i++) {
-        result[i] = start + rand() % (end - start + 1);
+void shuffleArray(int* array, int size) {
+    for (int i = size - 1; i > 0; i--) {
+        int j = rand() % (i + 1);
+        int temp = array[i];
+        array[i] = array[j];
+        array[j] = temp;
     }
 }
+int* generateRandomElements(int start, int end) {
+    int rangeSize = end - start + 1;
+    int* result = (int*)malloc(rangeSize * sizeof(int));
+    
+    // Fill array with sequential numbers
+    for (int i = 0; i < rangeSize; i++) {
+        result[i] = start + i;
+    }
 
+    // Shuffle the array
+    shuffleArray(result, rangeSize);
+    return result;
+}
 double getRandom() {
     double result;
     double u = ((double)rand() / RAND_MAX);
@@ -429,7 +441,7 @@ double getRandom() {
 
 void getNetProperties(Net** net, Data* data) {
     int layerNum = 0;
-    printf("Enter Hidden layer number: ");
+    printf("Enter the number of hidden layers: ");
     scanf_s("%d", &layerNum);
     layerNum += 2; // Add input and output layers
 
@@ -440,7 +452,7 @@ void getNetProperties(Net** net, Data* data) {
     }
 
     if(layerNum>2){
-        printf("Enter the neuron number for Hidden layers:\n");
+        printf("Enter the number of neurons for the hidden layers:\n");
         for (int i = 1; i < layerNum - 1; i++) {
             scanf_s("%d", &topology[i]);
         }
@@ -672,12 +684,12 @@ void trainGD(Net* net, Data* data, int epoch, double learningRate) {
 
 void trainSGD(Net* net, Data* data, int epoch, int batchSize, double learningRate) {
 
-    int epochIdx, dataIdx, shuffledIdx, trainSize, i;
+    int epochIdx, dataIdx, shuffledIdx, trainSize;
     int dataCount = data->rowCount;
-    int splitIdx = (2 * dataCount) / 10; // 80-20 ratio. First 20 percent is for testing the model 
+    int splitIdx = (2 * dataCount) / 10; // 80-20 ratio. First 20 percent is for testing
     trainSize = dataCount - splitIdx;
     double loss = 0;
-    double valError = 1;//Must be greater than stop_error at first
+    double valError = 1;
 
     if (batchSize >= trainSize || batchSize == 0) {
         printf("Batch size is cant be equal to or greater than train size");
@@ -685,42 +697,45 @@ void trainSGD(Net* net, Data* data, int epoch, int batchSize, double learningRat
     }
 
 
-    //Train
-    epochIdx = 0;
-    while (epochIdx < epoch && valError > STOP_ERROR)
-    {
-        valError = 0;
-        loss = 0;
-        epochIdx++;
-
-        // Shuffle indices
-        int* indices = (int*)malloc(trainSize * sizeof(int));
-        generateRandomElements(splitIdx, dataCount - 1, batchSize, indices);
-
-        //Calculate gradients etc.
-        for (dataIdx = 0; dataIdx < batchSize; dataIdx++)
-        {
-            shuffledIdx = indices[dataIdx];
-            feedForwardNet(net, data->inputVals[shuffledIdx], data->colCount);
-            softmaxNet(net);
-            backPropagation(net, data->targetVals[shuffledIdx], data->numOfClasses);
-            loss += calculateErr(net, data->targetVals[shuffledIdx]);
+    // Train
+    for (epochIdx = 0; epochIdx < epoch; epochIdx++) {
+        // Generate shuffled indices for this epoch
+        int* indices = generateRandomElements(splitIdx, dataCount - 1);
+        
+        // Calculate number of complete batches
+        int numBatches = trainSize / batchSize;
+        
+        // Process each batch
+        for (int batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+            loss = 0;
+            valError = 0;
+            
+            // Process each sample in the batch
+            for (dataIdx = 0; dataIdx < batchSize; dataIdx++) {
+                // Calculate the index into our shuffled indices array
+                int sampleIdx = batchIdx * batchSize + dataIdx;
+                if (sampleIdx < trainSize) {  // Safety check
+                    shuffledIdx = indices[sampleIdx];
+                    
+                    // Train on this sample
+                    feedForwardNet(net, data->inputVals[shuffledIdx], data->colCount);
+                    softmaxNet(net);
+                    backPropagation(net, data->targetVals[shuffledIdx], data->numOfClasses);
+                }
+            }
+            
+            // Update weights after processing the batch
+            updateWeightsNet(net, learningRate, batchSize);
         }
-        updateWeightsNet(net, learningRate, batchSize);
-        free(indices); // free random indices
-
-        //Validation Error calculation
-        for (dataIdx = 0; dataIdx < splitIdx; dataIdx++)
-        {
-            feedForwardNet(net, data->inputVals[dataIdx], data->colCount);
-            softmaxNet(net);
-            valError += calculateErr(net, data->targetVals[dataIdx]);
-        }
-        loss = loss / batchSize;
-        valError = valError / splitIdx;
-        printf("Loss :%lf ,", loss);
-        printf(" Validation Error:%lf\n", valError);
-
+        
+        // Calculate and print accuracy for this epoch
+        int correct, wrong;
+        testResults(net, data, splitIdx, &correct, &wrong);
+        double accuracy = 100.0 * correct / (correct + wrong);
+        printf("Epoch %d, accuracy: %.3lf%%\n", epochIdx + 1, accuracy);
+        
+        // Clean up the indices array for this epoch
+        free(indices);
     }
 
     //Test how many correct answers (test data is from 0 - splitIdx )
@@ -731,80 +746,68 @@ void trainSGD(Net* net, Data* data, int epoch, int batchSize, double learningRat
     printf("---- Test Results ---- \nWrong    :%d\nCorrect  :%d\nAccuracy :%.3lf\n", wrong, correct, accuracy);
 
 }
-
 void trainADAM(Net* net, Data* data, int epoch, int batchSize, double learningRate) {
-
-    int epochIdx, dataIdx, shuffledIdx, trainSize, i;
+    int epochIdx, dataIdx, shuffledIdx, trainSize;
     int dataCount = data->rowCount;
-    int splitIdx = (2 * dataCount) / 10; // 80-20 ratio. First 20 percent is for testing the model 
+    int splitIdx = (2 * dataCount) / 10; // 80-20 ratio. First 20 percent is for testing
     trainSize = dataCount - splitIdx;
     double loss = 0;
-    double valError = 1; // Must be greater than stop_error
+    double valError = 1;
 
     if (batchSize >= trainSize || batchSize == 0) {
-        printf("Batch size is cant be equal to or greater than train size");
+        printf("Batch size can't be equal to or greater than train size\n");
         return;
     }
 
-    clock_t start; 
-    clock_t currentTime; 
-    start = clock(); 
+    clock_t start = clock();
     
-
-    // To save loss-time , loss-iteration values
-    // FILE* fp;
-    // fp = fopen("adam.txt", "w");
-
-    //Train
-    epochIdx = 0;
-    while (epochIdx < epoch && valError > STOP_ERROR)
-    {        
-        valError = 0;
-        loss = 0;
-        epochIdx++;
-
-        // Shuffle indices
-        int* indices = (int*)malloc(trainSize * sizeof(int));
-        generateRandomElements(splitIdx, dataCount - 1, batchSize, indices);
-
-
-        for (dataIdx = 0; dataIdx < batchSize; dataIdx++)
-        {
-            shuffledIdx = indices[dataIdx];
-            feedForwardNet(net, data->inputVals[shuffledIdx], data->colCount);
-            softmaxNet(net);
-            backPropagation(net, data->targetVals[shuffledIdx], data->numOfClasses);
-            loss += calculateErr(net, data->targetVals[shuffledIdx]);
+    // Train
+    for (epochIdx = 0; epochIdx < epoch; epochIdx++) {
+        // Generate shuffled indices for this epoch
+        int* indices = generateRandomElements(splitIdx, dataCount - 1);
+        
+        // Calculate number of complete batches
+        int numBatches = trainSize / batchSize;
+        
+        // Process each batch
+        for (int batchIdx = 0; batchIdx < numBatches; batchIdx++) {
+            loss = 0;
+            valError = 0;
+            
+            // Process each sample in the batch
+            for (dataIdx = 0; dataIdx < batchSize; dataIdx++) {
+                // Calculate the index into our shuffled indices array
+                int sampleIdx = batchIdx * batchSize + dataIdx;
+                if (sampleIdx < trainSize) {  // Safety check
+                    shuffledIdx = indices[sampleIdx];
+                    
+                    // Train on this sample
+                    feedForwardNet(net, data->inputVals[shuffledIdx], data->colCount);
+                    softmaxNet(net);
+                    backPropagation(net, data->targetVals[shuffledIdx], data->numOfClasses);
+                }
+            }
+            
+            // Update weights after processing the batch
+            updateWeightsNetADAM(net, learningRate, batchSize, 0.9, 0.99);
         }
-        updateWeightsNetADAM(net, learningRate, batchSize, 0.9, 0.99);
-        free(indices); // free random indices
-
-        //Validation Error calculation
-        for (dataIdx = 0; dataIdx < splitIdx; dataIdx++)
-        {
-            feedForwardNet(net, data->inputVals[dataIdx], data->colCount);
-            softmaxNet(net);
-            valError += calculateErr(net, data->targetVals[dataIdx]);
-        }
-        loss = loss / batchSize;
-        valError = valError / splitIdx;
-        printf("Loss :%lf ,", loss);
-        printf(" Validation Error:%lf \n", valError);
-
-        // To save loss-time , loss-iteration values
-        // currentTime = clock() - start; 
-        // double time_taken = ((double)currentTime)/CLOCKS_PER_SEC; // in seconds 
-        // fprintf(fp,"%.4lf %.4lf %d\n",valError,time_taken,epochIdx);
-
+        
+        // Calculate and print accuracy for this epoch
+        int correct, wrong;
+        testResults(net, data, splitIdx, &correct, &wrong);
+        double accuracy = 100.0 * correct / (correct + wrong);
+        printf("Epoch %d, accuracy: %.3lf%%\n", epochIdx + 1, accuracy);
+        
+        // Clean up the indices array for this epoch
+        free(indices);
     }
 
-    //Test how many correct answers (test data is from 0 - splitIdx )
-
+    // Final test results
     int correct, wrong;
     testResults(net, data, splitIdx, &correct, &wrong);
-    double accuracy = 100.0 * (correct) / (correct + wrong);
-    printf("---- Test Results ---- \nWrong    :%d\nCorrect  :%d\nAccuracy :%.3lf\n", wrong, correct,accuracy);
-
+    double accuracy = 100.0 * correct / (correct + wrong);
+    printf("---- Final Test Results ----\nWrong    : %d\nCorrect  : %d\nAccuracy : %.3lf%%\n", 
+           wrong, correct, accuracy);
 }
 
 double activation(double x) { return x > 0 ? x : 0.01 * x; } // ReLu
