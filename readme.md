@@ -3,6 +3,9 @@
 ## Overview
 This project implements a fully connected neural network (MLP) from scratch in C to classify handwritten digits. The model achieves **96% accuracy** on the dataset using optimization techniques like **Gradient Descent (GD), Stochastic Gradient Descent (SGD), and ADAM optimizer**. The network supports softmax activation for multi-class classification and backpropagation for training.
 
+<img src="test_2.png" alt="Neural Network Example" width="350"/>
+<img src="test_1.png" alt="Neural Network Example" width="350"/>
+
 ## Features
 - Custom implementation of a **feedforward neural network**
 - **Backpropagation** for learning
