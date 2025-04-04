@@ -81,8 +81,6 @@ To load and use a saved model:
 - Experiment with different activation functions and loss functions
 - Optimize memory usage for handling larger datasets
 
-## Contributing
-Feel free to fork this repository and contribute improvements! Pull requests are welcome.
 
 ## License
 This project is licensed under the **MIT License**.
