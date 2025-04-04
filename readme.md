@@ -1,7 +1,7 @@
 # Neural Network for Handwritten Digit Classification
 
 ## Overview
-This project implements a fully connected neural network (MLP) from scratch in C to classify handwritten digits. The model achieves **96% accuracy** on the dataset using optimization techniques like **Gradient Descent (GD), Stochastic Gradient Descent (SGD), and ADAM optimizer**. The network supports softmax activation for multi-class classification and backpropagation for training.For detailed information, please read "Report.pdf".
+This project implements a fully connected neural network (MLP) from scratch in C to classify handwritten digits. The model achieves **96% accuracy** on the dataset using optimization techniques like **Gradient Descent (GD), Stochastic Gradient Descent (SGD), and ADAM optimizer**. The network supports softmax activation for multi-class classification and backpropagation for training.For detailed information, please read  "**Report.pdf**" 
 
 <img src="images/test_2.png" alt="Neural Network Example" width="350"/> <img src="images/test_1.png" alt="Neural Network Example" width="350"/>
 
